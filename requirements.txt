@@ -1,0 +1,6 @@
+SQLAlchemy
+PySide6
+python-dotenv
+spotipy
+requests
+rapidfuzz
