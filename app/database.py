@@ -1,11 +1,12 @@
 from pathlib import Path
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 
 class Base(DeclarativeBase):
     """Base class for all database models."""
+
     pass
 
 
@@ -19,3 +20,5 @@ DATABASE_FILE = DATA_DIR / "atlas.db"
 DATABASE_URL = f"sqlite:///{DATABASE_FILE}"
 
 engine = create_engine(DATABASE_URL, echo=False)
+
+SessionLocal = sessionmaker(bind=engine)
