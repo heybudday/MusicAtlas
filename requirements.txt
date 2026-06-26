@@ -4,3 +4,4 @@ python-dotenv
 spotipy
 requests
 rapidfuzz
+SQLAlchemy
