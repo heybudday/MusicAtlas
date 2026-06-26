@@ -1,11 +1,9 @@
-from app.models.release import Release
+from app.models import Release
 from app.models.session import SessionLocal
 
 
 def main():
-    session = SessionLocal()
-
-    try:
+    with SessionLocal() as session:
         release = session.query(Release).first()
 
         if release is None:
@@ -15,9 +13,6 @@ def main():
         print(f"Release ID: {release.discogs_release_id}")
         print(f"Title: {release.title}")
         print(f"Year: {release.released_year}")
-
-    finally:
-        session.close()
 
 
 if __name__ == "__main__":

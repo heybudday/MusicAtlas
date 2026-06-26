@@ -5,3 +5,4 @@ spotipy
 requests
 rapidfuzz
 SQLAlchemy
+alembic
