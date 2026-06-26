@@ -1,7 +1,9 @@
-from sqlalchemy import ForeignKeyConstraint, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import ForeignKeyConstraint, Text, cast, literal, or_
+from sqlalchemy.orm import Mapped, mapped_column, relationship, foreign
 
+from app.models.artist import Artist
 from app.models.base import Base
+from app.models.unresolved_artist import UnresolvedArtist
 
 
 class TrackArtist(Base):
@@ -23,6 +25,29 @@ class TrackArtist(Base):
     )
 
     track = relationship("Track", back_populates="track_artists")
+
+    resolved_artist = relationship(
+        "Artist",
+        primaryjoin=lambda: or_(
+            foreign(TrackArtist.artist_key) == cast(Artist.discogs_artist_id, Text),
+            foreign(TrackArtist.artist_key)
+            == literal("artist:") + cast(Artist.discogs_artist_id, Text),
+        ),
+        viewonly=True,
+        uselist=False,
+    )
+
+    unresolved_artist = relationship(
+        "UnresolvedArtist",
+        primaryjoin=lambda: foreign(TrackArtist.artist_key)
+        == UnresolvedArtist.unresolved_artist_key,
+        viewonly=True,
+        uselist=False,
+    )
+
+    @property
+    def artist(self):
+        return self.resolved_artist or self.unresolved_artist
 
     __table_args__ = (
         ForeignKeyConstraint(

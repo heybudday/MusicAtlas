@@ -1,7 +1,9 @@
-from sqlalchemy import ForeignKey, Integer, Text, Index
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import ForeignKey, Integer, Text, Index, cast, literal, or_
+from sqlalchemy.orm import Mapped, mapped_column, relationship, foreign
 
+from app.models.artist import Artist
 from app.models.base import Base
+from app.models.unresolved_artist import UnresolvedArtist
 
 
 class ReleaseArtist(Base):
@@ -11,10 +13,7 @@ class ReleaseArtist(Base):
         ForeignKey("releases.discogs_release_id"),
         primary_key=True,
     )
-    artist_key: Mapped[str] = mapped_column(
-        Text,
-        primary_key=True,
-    )
+    artist_key: Mapped[str] = mapped_column(Text, primary_key=True)
     role: Mapped[str] = mapped_column(
         Text,
         primary_key=True,
@@ -34,6 +33,29 @@ class ReleaseArtist(Base):
     )
 
     release = relationship("Release", back_populates="release_artists")
+
+    resolved_artist = relationship(
+        "Artist",
+        primaryjoin=lambda: or_(
+            foreign(ReleaseArtist.artist_key) == cast(Artist.discogs_artist_id, Text),
+            foreign(ReleaseArtist.artist_key)
+            == literal("artist:") + cast(Artist.discogs_artist_id, Text),
+        ),
+        viewonly=True,
+        uselist=False,
+    )
+
+    unresolved_artist = relationship(
+        "UnresolvedArtist",
+        primaryjoin=lambda: foreign(ReleaseArtist.artist_key)
+        == UnresolvedArtist.unresolved_artist_key,
+        viewonly=True,
+        uselist=False,
+    )
+
+    @property
+    def artist(self):
+        return self.resolved_artist or self.unresolved_artist
 
     __table_args__ = (
         Index("idx_release_artists_artist_key", "artist_key"),
