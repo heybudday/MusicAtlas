@@ -45,6 +45,15 @@ class IdentityOrchestrator:
         return result
 
     def lookup_label(self, label, provider):
+        if self.enrichment_repository is not None:
+            cached = self.enrichment_repository.get(
+                provider,
+                "label",
+                label,
+            )
+            if cached is not None:
+                return cached
+
         provider_instance = (
             self.providers.get(provider)
             or create_provider(provider)
