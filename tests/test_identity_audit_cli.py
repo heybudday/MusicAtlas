@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from app.cli.identity_audit import main
 
 
+@patch("sys.argv", ["identity_audit"])
 @patch("app.cli.identity_audit.SessionLocal")
 @patch("app.cli.identity_audit.IdentityAuditRunner")
 def test_identity_audit_cli(mock_runner_class, mock_session_local, capsys):
