@@ -1,9 +1,9 @@
-import json
+from __future__ import annotations
 
-from app.cli.review_queue import format_table, main
+from app.cli.review_queue import ReviewQueueCLI
 
 
-class FakeQueue:
+class FakeQueueService:
     def __init__(self, items):
         self._items = items
 
@@ -11,60 +11,173 @@ class FakeQueue:
         return self._items
 
 
-def test_format_table_empty():
-    output = format_table([])
+class FakeDecisionService:
+    def __init__(self):
+        self.approved = []
+        self.rejected = []
 
-    assert "No artists currently require manual review." in output
-    assert "Pending Reviews: 0" in output
+    def approve(self, item):
+        self.approved.append(item)
+
+    def reject(self, item):
+        self.rejected.append(item)
 
 
-def test_format_table_with_items():
-    output = format_table(
-        [
-            {
-                "artist_id": 12,
-                "artist_name": "Orbital",
-                "confidence": 0.88,
-                "providers": ["discogs", "musicbrainz"],
-            },
-            {
-                "artist_id": 18,
-                "artist_name": "Sasha",
-                "confidence": 0.91,
-                "providers": ["discogs"],
-            },
-        ]
+class FakeInput:
+    def __init__(self, choices):
+        self.choices = list(choices)
+
+    def __call__(self, _prompt):
+        return self.choices.pop(0)
+
+
+def test_approve_pending_item():
+    item = {
+        "artist_name": "Orbital",
+        "provider": "Discogs",
+        "confidence": 0.88,
+        "match_url": "https://discogs.com/artist/example",
+    }
+
+    decisions = FakeDecisionService()
+    output = []
+
+    cli = ReviewQueueCLI(
+        queue_service=FakeQueueService([item]),
+        decision_service=decisions,
+        input_func=FakeInput(["a"]),
+        output_func=output.append,
     )
 
-    assert "Pending Reviews: 2" in output
-    assert "Orbital" in output
-    assert "Sasha" in output
-    assert "discogs,musicbrainz" in output
+    result = cli.run()
+
+    assert result == 0
+    assert decisions.approved == [item]
+    assert decisions.rejected == []
+    assert "Approved." in output
 
 
-def test_cli_json(monkeypatch, capsys):
-    from app.cli import review_queue
+def test_reject_pending_item():
+    item = {
+        "artist_name": "Orbital",
+        "provider": "Discogs",
+        "confidence": 0.88,
+        "match_url": "https://discogs.com/artist/example",
+    }
 
-    monkeypatch.setattr(
-        review_queue,
-        "HumanReviewQueue",
-        lambda: FakeQueue(
-            [
-                {
-                    "artist_id": 1,
-                    "artist_name": "Phoenix",
-                    "confidence": 0.87,
-                    "providers": ["musicbrainz"],
-                }
-            ]
-        ),
+    decisions = FakeDecisionService()
+    output = []
+
+    cli = ReviewQueueCLI(
+        queue_service=FakeQueueService([item]),
+        decision_service=decisions,
+        input_func=FakeInput(["r"]),
+        output_func=output.append,
     )
 
-    assert main(["--json"]) == 0
+    result = cli.run()
 
-    captured = capsys.readouterr()
+    assert result == 0
+    assert decisions.approved == []
+    assert decisions.rejected == [item]
+    assert "Rejected." in output
 
-    data = json.loads(captured.out)
 
-    assert data[0]["artist_name"] == "Phoenix"
-    assert data[0]["confidence"] == 0.87
+def test_skip_does_not_call_decision_service():
+    item = {
+        "artist_name": "Orbital",
+        "provider": "Discogs",
+        "confidence": 0.88,
+        "match_url": "https://discogs.com/artist/example",
+    }
+
+    decisions = FakeDecisionService()
+    output = []
+
+    cli = ReviewQueueCLI(
+        queue_service=FakeQueueService([item]),
+        decision_service=decisions,
+        input_func=FakeInput(["s"]),
+        output_func=output.append,
+    )
+
+    result = cli.run()
+
+    assert result == 0
+    assert decisions.approved == []
+    assert decisions.rejected == []
+    assert "Skipped." in output
+
+
+def test_quit_stops_processing_remaining_items():
+    first = {
+        "artist_name": "Orbital",
+        "provider": "Discogs",
+        "confidence": 0.88,
+        "match_url": "https://discogs.com/artist/example",
+    }
+    second = {
+        "artist_name": "Underworld",
+        "provider": "MusicBrainz",
+        "confidence": 0.91,
+        "match_url": "https://musicbrainz.org/artist/example",
+    }
+
+    decisions = FakeDecisionService()
+    output = []
+
+    cli = ReviewQueueCLI(
+        queue_service=FakeQueueService([first, second]),
+        decision_service=decisions,
+        input_func=FakeInput(["q"]),
+        output_func=output.append,
+    )
+
+    result = cli.run()
+
+    assert result == 0
+    assert decisions.approved == []
+    assert decisions.rejected == []
+    assert "Quitting review queue." in output
+
+
+def test_invalid_choice_prompts_again():
+    item = {
+        "artist_name": "Orbital",
+        "provider": "Discogs",
+        "confidence": 0.88,
+        "match_url": "https://discogs.com/artist/example",
+    }
+
+    decisions = FakeDecisionService()
+    output = []
+
+    cli = ReviewQueueCLI(
+        queue_service=FakeQueueService([item]),
+        decision_service=decisions,
+        input_func=FakeInput(["x", "a"]),
+        output_func=output.append,
+    )
+
+    result = cli.run()
+
+    assert result == 0
+    assert decisions.approved == [item]
+    assert "Invalid choice. Use A, R, S, or Q." in output
+
+
+def test_no_pending_items():
+    decisions = FakeDecisionService()
+    output = []
+
+    cli = ReviewQueueCLI(
+        queue_service=FakeQueueService([]),
+        decision_service=decisions,
+        input_func=FakeInput([]),
+        output_func=output.append,
+    )
+
+    result = cli.run()
+
+    assert result == 0
+    assert output == ["No pending review items."]

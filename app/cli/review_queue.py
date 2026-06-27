@@ -1,102 +1,102 @@
 from __future__ import annotations
 
-import argparse
-import json
+
+SEPARATOR = "-" * 50
 
 
-def get_review_queue_class():
+class ReviewQueueCLI:
+    def __init__(
+        self,
+        queue_service=None,
+        decision_service=None,
+        input_func=input,
+        output_func=print,
+    ):
+        self.queue_service = queue_service
+        self.decision_service = decision_service
+        self.input_func = input_func
+        self.output_func = output_func
+
+    def run(self):
+        items = self.queue_service.pending()
+
+        if not items:
+            self.output_func("No pending review items.")
+            return 0
+
+        for item in items:
+            should_continue = self._process_item(item)
+            if not should_continue:
+                break
+
+        return 0
+
+    def _process_item(self, item):
+        while True:
+            self._display_item(item)
+            choice = self.input_func("Choice: ").strip().lower()
+
+            if choice in {"a", "approve"}:
+                self.decision_service.approve(item)
+                self.output_func("Approved.")
+                return True
+
+            if choice in {"r", "reject"}:
+                self.decision_service.reject(item)
+                self.output_func("Rejected.")
+                return True
+
+            if choice in {"s", "skip"}:
+                self.output_func("Skipped.")
+                return True
+
+            if choice in {"q", "quit"}:
+                self.output_func("Quitting review queue.")
+                return False
+
+            self.output_func("Invalid choice. Use A, R, S, or Q.")
+
+    def _display_item(self, item):
+        self.output_func(SEPARATOR)
+        self.output_func(f"Artist: {self._value(item, 'artist_name')}")
+        self.output_func("")
+        self.output_func(f"Provider: {self._value(item, 'provider')}")
+        self.output_func(f"Confidence: {self._value(item, 'confidence')}")
+        self.output_func("")
+        self.output_func("Recommended Match:")
+        self.output_func(str(self._value(item, 'match_url') or ""))
+        self.output_func("")
+        self.output_func("[A]pprove")
+        self.output_func("[R]eject")
+        self.output_func("[S]kip")
+        self.output_func("[Q]uit")
+        self.output_func("")
+
+    def _value(self, item, name):
+        if isinstance(item, dict):
+            return item.get(name)
+        return getattr(item, name, None)
+
+
+def main():
+    from app.database import SessionLocal
+    from app.services.review_decision_service import ReviewDecisionService
+    from app.services.review_queue_service import ReviewQueueService
+
+    session = SessionLocal()
+
     try:
-        from app.services.human_review_queue import HumanReviewQueue
+        queue_service = ReviewQueueService(session)
+        decision_service = ReviewDecisionService(session)
 
-        return HumanReviewQueue
-    except ModuleNotFoundError:
-        pass
-
-    try:
-        from app.services.identity_review_queue import HumanReviewQueue
-
-        return HumanReviewQueue
-    except ModuleNotFoundError:
-        pass
-
-    try:
-        from app.services.review_queue import HumanReviewQueue
-
-        return HumanReviewQueue
-    except ModuleNotFoundError:
-        pass
-
-    return None
-
-
-HumanReviewQueue = get_review_queue_class()
-
-
-def build_parser():
-    parser = argparse.ArgumentParser(
-        description="Music Atlas Human Review Queue"
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output pending reviews as JSON",
-    )
-    return parser
-
-
-def format_table(items):
-    lines = [
-        "========================================",
-        "Music Atlas Review Queue",
-        "========================================",
-        "",
-        f"Pending Reviews: {len(items)}",
-        "",
-    ]
-
-    if not items:
-        lines.append("No artists currently require manual review.")
-        return "\n".join(lines)
-
-    header = (
-        f"{'ID':<6}"
-        f"{'Artist':<30}"
-        f"{'Confidence':<12}"
-        f"Providers"
-    )
-
-    lines.append(header)
-    lines.append("-" * len(header))
-
-    for item in items:
-        providers = ",".join(item.get("providers", []))
-
-        lines.append(
-            f"{item.get('artist_id', ''):<6}"
-            f"{item.get('artist_name', ''):<30}"
-            f"{item.get('confidence', 0):<12.2f}"
-            f"{providers}"
+        cli = ReviewQueueCLI(
+            queue_service=queue_service,
+            decision_service=decision_service,
         )
 
-    return "\n".join(lines)
-
-
-def main(argv=None):
-    parser = build_parser()
-    args = parser.parse_args(argv)
-
-    if HumanReviewQueue is None:
-        items = []
-    else:
-        queue = HumanReviewQueue()
-        items = queue.pending()
-
-    if args.json:
-        print(json.dumps(items, indent=2))
-    else:
-        print(format_table(items))
-
-    return 0
+        return cli.run()
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":
