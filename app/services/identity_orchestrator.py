@@ -3,8 +3,6 @@ from __future__ import annotations
 from app.identity_providers.factory import create_provider
 from app.services.external_identity_service import ExternalIdentityService
 from app.services.identity_confidence import IdentityConfidence
-from app.services.identity_relationships import IdentityRelationships
-from app.services.identity_review_service import IdentityReviewService
 
 
 class IdentityOrchestrator:
@@ -13,7 +11,6 @@ class IdentityOrchestrator:
     """
 
     DEFAULT_PROVIDER_PRIORITY = ["discogs", "musicbrainz"]
-    DEFAULT_PERSIST_THRESHOLD = 0.90
 
     def __init__(
         self,
@@ -28,12 +25,8 @@ class IdentityOrchestrator:
         self.enrichment_repository = enrichment_repository
         self.provider_priority = provider_priority or self.DEFAULT_PROVIDER_PRIORITY
         self.confidence_scorer = confidence_scorer or IdentityConfidence()
-        self.relationship_resolver = IdentityRelationships()
         self.external_identity_service = (
             ExternalIdentityService(session) if session is not None else None
-        )
-        self.identity_review_service = (
-            IdentityReviewService(session) if session is not None else None
         )
 
     def _get_provider(self, provider):
@@ -50,202 +43,165 @@ class IdentityOrchestrator:
         )
 
     def _cache_result(self, result):
-        if self.enrichment_repository is not None:
-            self.enrichment_repository.upsert(result)
+        if self.enrichment_repository is None:
+            return
 
-    def _normalize_relationships(self, result):
-        return self.relationship_resolver.resolve(result)
+        if result.get("matched") is False:
+            return
 
-    def _should_persist_identity(self, best_match):
-        if best_match is None:
-            return False
-
-        result = best_match.get("result", {})
-
-        return (
-            result.get("matched") is True
-            and best_match.get("confidence", 0) >= self.DEFAULT_PERSIST_THRESHOLD
-        )
-
-    def _should_queue_for_review(self, best_match):
-        if best_match is None:
-            return False
-
-        return best_match.get("review_recommended") is True
-
-    def _queue_identity_review(
-        self,
-        entity_type,
-        entity_key,
-        best_match,
-    ):
-        if self.identity_review_service is None:
-            return None
-
-        result = best_match.get("result", {})
-
-        return self.identity_review_service.create(
-            entity_type=entity_type,
-            entity_key=entity_key,
-            provider=best_match.get("provider"),
-            candidate_external_id=result.get("external_id"),
-            candidate_name=result.get("name"),
-            confidence=best_match.get(
-                "confidence",
-                result.get("confidence"),
-            ),
-            reason=best_match.get(
-                "reason",
-                result.get("reason"),
-            ),
-        )
-
-    def _summarize_result(self, item):
-        result = item.get("result", {})
-
-        return {
-            "provider": item.get("provider"),
-            "confidence": item.get(
-                "confidence",
-                result.get("confidence", 0),
-            ),
-            "reason": item.get(
-                "reason",
-                result.get("reason"),
-            ),
-        }
-
-    def _build_decision_summary(self, best_match, results):
-        if best_match is None:
-            return None
-
-        winner_provider = best_match.get("provider")
-        evaluated = [
-            self._summarize_result(item)
-            for item in results
-        ]
-
-        return {
-            "provider": winner_provider,
-            "confidence": best_match.get("confidence", 0),
-            "confidence_margin": best_match.get("confidence_margin"),
-            "review_recommended": best_match.get(
-                "review_recommended",
-                False,
-            ),
-            "reason": best_match.get("reason"),
-            "evaluated": evaluated,
-            "compared_against": [
-                item
-                for item in evaluated
-                if item["provider"] != winner_provider
-            ],
-        }
-
-    def _build_resolution_result(self, best_match, results):
-        if best_match is None:
-            return {
-                "winner": None,
-                "decision": None,
-            }
-
-        return {
-            **best_match,
-            "winner": best_match,
-            "decision": self._build_decision_summary(
-                best_match,
-                results,
-            ),
-        }
+        self.enrichment_repository.upsert(result)
 
     def lookup_artist(self, artist, provider):
         cached = self._get_cached_result(provider, "artist", artist)
         if cached is not None:
-            return self._normalize_relationships(cached)
+            return cached
 
-        provider_instance = self._get_provider(provider)
-        result = provider_instance.lookup_artist(artist)
-        result = self._normalize_relationships(result)
-
+        result = self._get_provider(provider).lookup_artist(artist)
         self._cache_result(result)
-
         return result
 
     def lookup_label(self, label, provider):
         cached = self._get_cached_result(provider, "label", label)
         if cached is not None:
-            return self._normalize_relationships(cached)
+            return cached
 
-        provider_instance = self._get_provider(provider)
-        result = provider_instance.lookup_label(label)
-        result = self._normalize_relationships(result)
-
+        result = self._get_provider(provider).lookup_label(label)
         self._cache_result(result)
-
         return result
 
-    def enrich_artist(self, artist, providers=None):
+    def lookup_artist_with_fallback(self, artist, providers):
+        for provider in providers:
+            try:
+                result = self.lookup_artist(artist, provider)
+            except Exception:
+                continue
+
+            if result.get("matched"):
+                return result
+
+        return None
+
+    def lookup_label_with_fallback(self, label, providers):
+        for provider in providers:
+            try:
+                result = self.lookup_label(label, provider)
+            except Exception:
+                continue
+
+            if result.get("matched"):
+                return result
+
+        return None
+
+    def _select_best(self, query, results, confidence_threshold):
+        return self.confidence_scorer.select_best(
+            query,
+            results,
+            threshold=confidence_threshold,
+        )
+
+    def enrich_artist(
+        self,
+        artist,
+        providers,
+        confidence_threshold=0.75,
+    ):
+        results = []
+
+        for provider in providers:
+            result = self.lookup_artist(artist, provider)
+            results.append(
+                {
+                    "provider": provider,
+                    "result": result,
+                }
+            )
+
+        return {
+            "results": results,
+            "best_match": self._select_best(
+                artist,
+                results,
+                confidence_threshold,
+            ),
+        }
+
+    def enrich_label(
+        self,
+        label,
+        providers,
+        confidence_threshold=0.75,
+    ):
+        results = []
+
+        for provider in providers:
+            result = self.lookup_label(label, provider)
+            results.append(
+                {
+                    "provider": provider,
+                    "result": result,
+                }
+            )
+
+        return {
+            "results": results,
+            "best_match": self._select_best(
+                label,
+                results,
+                confidence_threshold,
+            ),
+        }
+
+    def enrich_with_priority(self, entity_type, query, providers=None):
         providers = providers or self.provider_priority
 
-        return [
-            {
-                "provider": provider,
-                "result": self.lookup_artist(artist, provider),
-            }
-            for provider in providers
-        ]
-
-    def enrich_label(self, label, providers=None):
-        providers = providers or self.provider_priority
-
-        return [
-            {
-                "provider": provider,
-                "result": self.lookup_label(label, provider),
-            }
-            for provider in providers
-        ]
-
-    def resolve_artist(self, artist, providers=None):
-        results = self.enrich_artist(artist, providers)
-        best_match = self.confidence_scorer.select_best(artist, results)
-
-        if (
-            self.external_identity_service is not None
-            and self._should_persist_identity(best_match)
-        ):
-            self.external_identity_service.upsert_artist_identity(
-                artist,
-                best_match,
+        for provider in providers:
+            result = (
+                self.lookup_artist(query, provider)
+                if entity_type == "artist"
+                else self.lookup_label(query, provider)
             )
 
-        if self._should_queue_for_review(best_match):
-            self._queue_identity_review(
-                "artist",
-                artist,
-                best_match,
+            if result.get("matched"):
+                return {
+                    "provider": provider,
+                    "result": result,
+                }
+
+        return None
+
+    def persist_identity(self, source):
+        if self.external_identity_service is None:
+            return None
+
+        return self.external_identity_service.get_or_create(source)
+
+    def resolve_artist(self, artist_key, artist_name, providers):
+        resolved = self.enrich_artist(artist_name, providers)
+
+        best_match = resolved["best_match"]
+        if best_match is not None and best_match["result"].get("matched"):
+            self.persist_identity(
+                {
+                    "source_key": artist_key,
+                    "entity_type": "artist",
+                    **best_match["result"],
+                }
             )
 
-        return self._build_resolution_result(best_match, results)
+        return resolved
 
-    def resolve_label(self, label, providers=None):
-        results = self.enrich_label(label, providers)
-        best_match = self.confidence_scorer.select_best(label, results)
+    def resolve_label(self, label_key, label_name, providers):
+        resolved = self.enrich_label(label_name, providers)
 
-        if (
-            self.external_identity_service is not None
-            and self._should_persist_identity(best_match)
-        ):
-            self.external_identity_service.upsert_label_identity(
-                label,
-                best_match,
+        best_match = resolved["best_match"]
+        if best_match is not None and best_match["result"].get("matched"):
+            self.persist_identity(
+                {
+                    "source_key": label_key,
+                    "entity_type": "label",
+                    **best_match["result"],
+                }
             )
 
-        if self._should_queue_for_review(best_match):
-            self._queue_identity_review(
-                "label",
-                label,
-                best_match,
-            )
-
-        return self._build_resolution_result(best_match, results)
+        return resolved
