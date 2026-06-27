@@ -86,6 +86,11 @@ class IdentityOrchestrator:
         return {
             "provider": winner_provider,
             "confidence": best_match.get("confidence", 0),
+            "confidence_margin": best_match.get("confidence_margin"),
+            "review_recommended": best_match.get(
+                "review_recommended",
+                False,
+            ),
             "reason": best_match.get("reason"),
             "evaluated": evaluated,
             "compared_against": [
