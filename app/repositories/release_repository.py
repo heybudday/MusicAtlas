@@ -1,56 +1,76 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.release import Release
-from app.repositories.base_repository import BaseRepository
+from app.models.release_artist import ReleaseArtist
+from app.models.release_label import ReleaseLabel
+from app.models.track import Track
+from app.models.track_artist import TrackArtist
 
 
-class ReleaseRepository(BaseRepository[Release]):
-    model = Release
+def get_release_by_id(session: Session, discogs_release_id: int) -> Release | None:
+    return session.get(Release, discogs_release_id)
 
-    def __init__(self, session: Session):
-        super().__init__(session, self.model)
 
-    def find_by_title(self, title: str) -> Release | None:
-        stmt = select(Release).where(Release.title == title)
-        return self.session.scalar(stmt)
-
-    def search_title(self, text: str) -> list[Release]:
-        stmt = (
-            select(Release)
-            .where(Release.title.ilike(f"%{text}%"))
-            .order_by(Release.title)
+def get_release_graph(session: Session, discogs_release_id: int) -> Release | None:
+    stmt = (
+        select(Release)
+        .where(Release.discogs_release_id == discogs_release_id)
+        .options(
+            selectinload(Release.release_artists),
+            selectinload(Release.release_labels),
+            selectinload(Release.tracks).selectinload(Track.track_artists),
         )
-        return list(self.session.scalars(stmt))
+    )
 
-    def released_in(self, year: int) -> list[Release]:
-        stmt = (
-            select(Release)
-            .where(Release.released_year == year)
-            .order_by(Release.title)
-        )
-        return list(self.session.scalars(stmt))
+    return session.scalar(stmt)
 
-    def find_by_catalog_number(self, catalog_number: str) -> list[Release]:
-        stmt = (
-            select(Release)
-            .where(Release.catalog_number == catalog_number)
-            .order_by(Release.title)
-        )
-        return list(self.session.scalars(stmt))
 
-    def find_by_raw_artist(self, artist: str) -> list[Release]:
-        stmt = (
-            select(Release)
-            .where(Release.raw_artist.ilike(f"%{artist}%"))
-            .order_by(Release.released_year, Release.title)
-        )
-        return list(self.session.scalars(stmt))
+def get_releases_for_artist_key(
+    session: Session,
+    artist_key: str,
+    limit: int = 25,
+) -> list[Release]:
+    stmt = (
+        select(Release)
+        .join(ReleaseArtist)
+        .where(ReleaseArtist.artist_key == artist_key)
+        .order_by(Release.released_year, Release.title)
+        .limit(limit)
+    )
 
-    def find_by_raw_label(self, label: str) -> list[Release]:
-        stmt = (
-            select(Release)
-            .where(Release.raw_label.ilike(f"%{label}%"))
-            .order_by(Release.released_year, Release.title)
-        )
-        return list(self.session.scalars(stmt))
+    return list(session.scalars(stmt))
+
+
+def get_releases_for_label_key(
+    session: Session,
+    label_key: str,
+    limit: int = 25,
+) -> list[Release]:
+    stmt = (
+        select(Release)
+        .join(ReleaseLabel)
+        .where(ReleaseLabel.label_key == label_key)
+        .order_by(Release.released_year, Release.title)
+        .limit(limit)
+    )
+
+    return list(session.scalars(stmt))
+
+
+def get_releases_with_track_artist_key(
+    session: Session,
+    artist_key: str,
+    limit: int = 25,
+) -> list[Release]:
+    stmt = (
+        select(Release)
+        .join(Track)
+        .join(TrackArtist)
+        .where(TrackArtist.artist_key == artist_key)
+        .order_by(Release.released_year, Release.title)
+        .distinct()
+        .limit(limit)
+    )
+
+    return list(session.scalars(stmt))
