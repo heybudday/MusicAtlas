@@ -11,7 +11,7 @@ class MusicBrainzClient:
 
     def __init__(self):
         self.headers = {
-            "User-Agent": "MusicAtlas/0.1 (https://github.com/your-org/musicatlas)"
+            "User-Agent": "MusicAtlas/0.1 (your-email@example.com)"
         }
 
     def search_artist(self, name):
@@ -44,4 +44,30 @@ class MusicBrainzClient:
         }
 
     def search_label(self, name):
-        raise NotImplementedError
+        response = requests.get(
+            f"{BASE_URL}/label",
+            params={
+                "query": name,
+                "fmt": "json",
+                "limit": 1,
+            },
+            headers=self.headers,
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        labels = data.get("labels", [])
+
+        if not labels:
+            return None
+
+        label = labels[0]
+
+        return {
+            "id": label["id"],
+            "name": label["name"],
+            "score": int(label.get("score", 0)),
+        }
