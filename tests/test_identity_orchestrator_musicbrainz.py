@@ -25,7 +25,7 @@ def test_enrich_artist_with_musicbrainz(mock_create_provider):
         providers=["musicbrainz"],
     )
 
-    assert results["results"] == [
+    assert results == [
         {
             "provider": "musicbrainz",
             "result": {
@@ -38,8 +38,6 @@ def test_enrich_artist_with_musicbrainz(mock_create_provider):
             },
         }
     ]
-
-    assert results["best_match"]["provider"] == "musicbrainz"
 
 
 @patch("app.services.identity_orchestrator.create_provider")
@@ -64,7 +62,7 @@ def test_enrich_label_with_musicbrainz(mock_create_provider):
         providers=["musicbrainz"],
     )
 
-    assert results["results"] == [
+    assert results == [
         {
             "provider": "musicbrainz",
             "result": {
@@ -77,5 +75,3 @@ def test_enrich_label_with_musicbrainz(mock_create_provider):
             },
         }
     ]
-
-    assert results["best_match"]["provider"] == "musicbrainz"

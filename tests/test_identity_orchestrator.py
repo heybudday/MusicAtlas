@@ -34,10 +34,7 @@ def test_artist_orchestrator_calls_provider(monkeypatch):
 
     result = orchestrator.enrich_artist("Jeff Mills", ["fake"])
 
-    assert "results" in result
-    assert "best_match" in result
-
-    assert result["results"] == [
+    assert result == [
         {
             "provider": "fake",
             "result": {
@@ -47,8 +44,6 @@ def test_artist_orchestrator_calls_provider(monkeypatch):
             },
         }
     ]
-
-    assert result["best_match"]["provider"] == "fake"
 
 
 def test_label_orchestrator_calls_provider(monkeypatch):
@@ -62,10 +57,7 @@ def test_label_orchestrator_calls_provider(monkeypatch):
 
     result = orchestrator.enrich_label("Axis", ["fake"])
 
-    assert "results" in result
-    assert "best_match" in result
-
-    assert result["results"] == [
+    assert result == [
         {
             "provider": "fake",
             "result": {
@@ -76,10 +68,8 @@ def test_label_orchestrator_calls_provider(monkeypatch):
         }
     ]
 
-    assert result["best_match"]["provider"] == "fake"
 
-
-def test_enrich_artist_returns_best_match():
+def test_resolve_artist_returns_best_match():
     class LowConfidenceProvider:
         def lookup_artist(self, name):
             return {
@@ -101,18 +91,16 @@ def test_enrich_artist_returns_best_match():
         }
     )
 
-    result = orchestrator.enrich_artist(
+    result = orchestrator.resolve_artist(
         "Jeff Mills",
         ["low", "high"],
     )
 
-    assert "results" in result
-    assert "best_match" in result
-    assert result["best_match"]["provider"] == "high"
-    assert result["best_match"]["result"]["name"] == "Jeff Mills"
+    assert result["provider"] == "high"
+    assert result["result"]["name"] == "Jeff Mills"
 
 
-def test_enrich_artist_best_match_is_none_when_below_threshold():
+def test_resolve_artist_returns_low_confidence_best_match():
     class WeakProvider:
         def lookup_artist(self, name):
             return {
@@ -126,10 +114,13 @@ def test_enrich_artist_best_match_is_none_when_below_threshold():
         }
     )
 
-    result = orchestrator.enrich_artist(
+    result = orchestrator.resolve_artist(
         "Jeff Mills",
         ["weak"],
-        confidence_threshold=0.95,
     )
 
-    assert result["best_match"] is None
+    assert result["provider"] == "weak"
+    assert (
+        result["confidence"]
+        < IdentityOrchestrator.DEFAULT_PERSIST_THRESHOLD
+    )

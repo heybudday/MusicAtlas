@@ -5,18 +5,12 @@ class MatchingProvider:
     def lookup_artist(self, name):
         return {
             "matched": True,
-            "provider": "matching",
-            "entity_type": "artist",
-            "query": name,
             "name": name,
         }
 
     def lookup_label(self, name):
         return {
             "matched": True,
-            "provider": "matching",
-            "entity_type": "label",
-            "query": name,
             "name": name,
         }
 
@@ -25,40 +19,15 @@ class NoMatchProvider:
     def lookup_artist(self, name):
         return {
             "matched": False,
-            "provider": "nomatch",
-            "entity_type": "artist",
-            "query": name,
         }
 
     def lookup_label(self, name):
         return {
             "matched": False,
-            "provider": "nomatch",
-            "entity_type": "label",
-            "query": name,
         }
 
 
-class FailingProvider:
-    def lookup_artist(self, name):
-        raise RuntimeError("provider unavailable")
-
-    def lookup_label(self, name):
-        raise RuntimeError("provider unavailable")
-
-
-class FakeEnrichmentRepository:
-    def __init__(self):
-        self.records = []
-
-    def get(self, provider, entity_type, query):
-        return None
-
-    def upsert(self, result):
-        self.records.append(result)
-
-
-def test_artist_lookup_falls_back_after_no_match():
+def test_resolve_artist_prefers_matching_provider():
     orchestrator = IdentityOrchestrator(
         providers={
             "nomatch": NoMatchProvider(),
@@ -66,33 +35,16 @@ def test_artist_lookup_falls_back_after_no_match():
         }
     )
 
-    result = orchestrator.lookup_artist_with_fallback(
+    result = orchestrator.resolve_artist(
         "Jeff Mills",
         ["nomatch", "matching"],
     )
 
-    assert result["matched"] is True
     assert result["provider"] == "matching"
+    assert result["result"]["matched"] is True
 
 
-def test_artist_lookup_falls_back_after_provider_error():
-    orchestrator = IdentityOrchestrator(
-        providers={
-            "failing": FailingProvider(),
-            "matching": MatchingProvider(),
-        }
-    )
-
-    result = orchestrator.lookup_artist_with_fallback(
-        "Jeff Mills",
-        ["failing", "matching"],
-    )
-
-    assert result["matched"] is True
-    assert result["provider"] == "matching"
-
-
-def test_label_lookup_falls_back_after_no_match():
+def test_resolve_label_prefers_matching_provider():
     orchestrator = IdentityOrchestrator(
         providers={
             "nomatch": NoMatchProvider(),
@@ -100,30 +52,44 @@ def test_label_lookup_falls_back_after_no_match():
         }
     )
 
-    result = orchestrator.lookup_label_with_fallback(
+    result = orchestrator.resolve_label(
         "Axis",
         ["nomatch", "matching"],
     )
 
-    assert result["matched"] is True
     assert result["provider"] == "matching"
+    assert result["result"]["matched"] is True
 
 
-def test_successful_fallback_result_is_cached():
-    repository = FakeEnrichmentRepository()
-
+def test_resolve_artist_returns_unmatched_result_when_no_provider_matches():
     orchestrator = IdentityOrchestrator(
         providers={
             "nomatch": NoMatchProvider(),
-            "matching": MatchingProvider(),
-        },
-        enrichment_repository=repository,
+        }
     )
 
-    result = orchestrator.lookup_artist_with_fallback(
+    result = orchestrator.resolve_artist(
         "Jeff Mills",
-        ["nomatch", "matching"],
+        ["nomatch"],
     )
 
-    assert result["matched"] is True
-    assert repository.records == [result]
+    assert result["provider"] == "nomatch"
+    assert result["confidence"] == 0.0
+    assert result["result"]["matched"] is False
+
+
+def test_resolve_label_returns_unmatched_result_when_no_provider_matches():
+    orchestrator = IdentityOrchestrator(
+        providers={
+            "nomatch": NoMatchProvider(),
+        }
+    )
+
+    result = orchestrator.resolve_label(
+        "Axis",
+        ["nomatch"],
+    )
+
+    assert result["provider"] == "nomatch"
+    assert result["confidence"] == 0.0
+    assert result["result"]["matched"] is False
