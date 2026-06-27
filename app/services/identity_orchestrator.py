@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.identity_providers.factory import create_provider
 from app.services.external_identity_service import ExternalIdentityService
 from app.services.identity_confidence import IdentityConfidence
+from app.services.identity_review_service import IdentityReviewService
 
 
 class IdentityOrchestrator:
@@ -28,6 +29,9 @@ class IdentityOrchestrator:
         self.confidence_scorer = confidence_scorer or IdentityConfidence()
         self.external_identity_service = (
             ExternalIdentityService(session) if session is not None else None
+        )
+        self.identity_review_service = (
+            IdentityReviewService(session) if session is not None else None
         )
 
     def _get_provider(self, provider):
@@ -56,6 +60,39 @@ class IdentityOrchestrator:
         return (
             result.get("matched") is True
             and best_match.get("confidence", 0) >= self.DEFAULT_PERSIST_THRESHOLD
+        )
+
+    def _should_queue_for_review(self, best_match):
+        if best_match is None:
+            return False
+
+        return best_match.get("review_recommended") is True
+
+    def _queue_identity_review(
+        self,
+        entity_type,
+        entity_key,
+        best_match,
+    ):
+        if self.identity_review_service is None:
+            return None
+
+        result = best_match.get("result", {})
+
+        return self.identity_review_service.create(
+            entity_type=entity_type,
+            entity_key=entity_key,
+            provider=best_match.get("provider"),
+            candidate_external_id=result.get("external_id"),
+            candidate_name=result.get("name"),
+            confidence=best_match.get(
+                "confidence",
+                result.get("confidence"),
+            ),
+            reason=best_match.get(
+                "reason",
+                result.get("reason"),
+            ),
         )
 
     def _summarize_result(self, item):
@@ -175,6 +212,13 @@ class IdentityOrchestrator:
                 best_match,
             )
 
+        if self._should_queue_for_review(best_match):
+            self._queue_identity_review(
+                "artist",
+                artist,
+                best_match,
+            )
+
         return self._build_resolution_result(best_match, results)
 
     def resolve_label(self, label, providers=None):
@@ -186,6 +230,13 @@ class IdentityOrchestrator:
             and self._should_persist_identity(best_match)
         ):
             self.external_identity_service.upsert_label_identity(
+                label,
+                best_match,
+            )
+
+        if self._should_queue_for_review(best_match):
+            self._queue_identity_review(
+                "label",
                 label,
                 best_match,
             )

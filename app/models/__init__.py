@@ -12,6 +12,7 @@ from .track import Track
 from .track_artist import TrackArtist
 from .unresolved_artist import UnresolvedArtist
 from .unresolved_label import UnresolvedLabel
+from .identity_review import IdentityReview
 
 __all__ = [
     "Base",

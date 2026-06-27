@@ -5,6 +5,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.models.base import Base
 
+import app.models
+
 
 @pytest.fixture
 def db_session():
