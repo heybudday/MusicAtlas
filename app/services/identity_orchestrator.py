@@ -32,6 +32,15 @@ class IdentityOrchestrator:
             if cached is not None:
                 return cached
 
+        if self.external_identity_service is not None:
+            cached_identity = self.external_identity_service.find(
+                "artist",
+                artist,
+                provider,
+            )
+            if cached_identity is not None:
+                return cached_identity
+
         provider_instance = (
             self.providers.get(provider)
             or create_provider(provider)
