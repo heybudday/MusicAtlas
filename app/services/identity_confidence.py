@@ -12,8 +12,21 @@ class IdentityConfidence:
         if not result.get("matched"):
             return 0.0
 
-        if result.get("name") == query:
+        name = result.get("name")
+
+        if name == query:
             return 1.0
+
+        if self._normalize(name) == self._normalize(query):
+            return 0.98
+
+        relationship_match = self._related_name_match(query, result)
+
+        if relationship_match == "exact":
+            return 0.95
+
+        if relationship_match == "normalized":
+            return 0.92
 
         return 0.5
 
@@ -21,8 +34,21 @@ class IdentityConfidence:
         if not result.get("matched"):
             return "not_matched"
 
-        if result.get("name") == query:
+        name = result.get("name")
+
+        if name == query:
             return "exact_name_match"
+
+        if self._normalize(name) == self._normalize(query):
+            return "normalized_name_match"
+
+        relationship_match = self._related_name_match(query, result)
+
+        if relationship_match == "exact":
+            return "exact_related_name_match"
+
+        if relationship_match == "normalized":
+            return "normalized_related_name_match"
 
         return "partial_name_match"
 
@@ -80,3 +106,19 @@ class IdentityConfidence:
         )
 
         return best
+
+    def _related_name_match(self, query, result):
+        related_names = result.get("related_names") or []
+        query_normalized = self._normalize(query)
+
+        for name in related_names:
+            if name == query:
+                return "exact"
+
+            if self._normalize(name) == query_normalized:
+                return "normalized"
+
+        return None
+
+    def _normalize(self, value):
+        return str(value or "").strip().lower()
