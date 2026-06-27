@@ -6,6 +6,8 @@ class IdentityConfidence:
     Computes confidence scores for identity matches.
     """
 
+    DEFAULT_REVIEW_MARGIN = 0.05
+
     def score(self, query, result):
         if not result.get("matched"):
             return 0.0
@@ -29,7 +31,11 @@ class IdentityConfidence:
         query,
         results,
         threshold=0.0,
+        review_margin=None,
     ):
+        if review_margin is None:
+            review_margin = self.DEFAULT_REVIEW_MARGIN
+
         scored = []
 
         for item in results:
@@ -48,12 +54,29 @@ class IdentityConfidence:
         if not scored:
             return None
 
-        best = max(
+        ranked = sorted(
             scored,
             key=lambda item: item["confidence"],
+            reverse=True,
         )
+
+        best = ranked[0]
 
         if best["confidence"] < threshold:
             return None
+
+        if len(ranked) > 1:
+            confidence_margin = round(
+                best["confidence"] - ranked[1]["confidence"],
+                2,
+            )
+        else:
+            confidence_margin = 1.0
+
+        best["confidence_margin"] = confidence_margin
+        best["review_recommended"] = (
+            len(ranked) > 1
+            and confidence_margin < review_margin
+        )
 
         return best
