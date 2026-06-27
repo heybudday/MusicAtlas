@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.identity_providers.factory import create_provider
 from app.services.external_identity_service import ExternalIdentityService
 from app.services.identity_confidence import IdentityConfidence
+from app.services.identity_relationships import IdentityRelationships
 from app.services.identity_review_service import IdentityReviewService
 
 
@@ -27,6 +28,7 @@ class IdentityOrchestrator:
         self.enrichment_repository = enrichment_repository
         self.provider_priority = provider_priority or self.DEFAULT_PROVIDER_PRIORITY
         self.confidence_scorer = confidence_scorer or IdentityConfidence()
+        self.relationship_resolver = IdentityRelationships()
         self.external_identity_service = (
             ExternalIdentityService(session) if session is not None else None
         )
@@ -50,6 +52,9 @@ class IdentityOrchestrator:
     def _cache_result(self, result):
         if self.enrichment_repository is not None:
             self.enrichment_repository.upsert(result)
+
+    def _normalize_relationships(self, result):
+        return self.relationship_resolver.resolve(result)
 
     def _should_persist_identity(self, best_match):
         if best_match is None:
@@ -156,10 +161,11 @@ class IdentityOrchestrator:
     def lookup_artist(self, artist, provider):
         cached = self._get_cached_result(provider, "artist", artist)
         if cached is not None:
-            return cached
+            return self._normalize_relationships(cached)
 
         provider_instance = self._get_provider(provider)
         result = provider_instance.lookup_artist(artist)
+        result = self._normalize_relationships(result)
 
         self._cache_result(result)
 
@@ -168,10 +174,11 @@ class IdentityOrchestrator:
     def lookup_label(self, label, provider):
         cached = self._get_cached_result(provider, "label", label)
         if cached is not None:
-            return cached
+            return self._normalize_relationships(cached)
 
         provider_instance = self._get_provider(provider)
         result = provider_instance.lookup_label(label)
+        result = self._normalize_relationships(result)
 
         self._cache_result(result)
 
