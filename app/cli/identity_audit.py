@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 
 from app.database import SessionLocal
+from app.services.identity_audit_dashboard import IdentityAuditDashboard
 from app.services.identity_audit_exporter import IdentityAuditExporter
 from app.services.identity_audit_runner import IdentityAuditRunner
 
@@ -10,6 +11,14 @@ from app.services.identity_audit_runner import IdentityAuditRunner
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Run the Music Atlas identity audit."
+    )
+
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=["run", "dashboard"],
+        default="run",
+        help="Command to run.",
     )
 
     parser.add_argument(
@@ -31,11 +40,6 @@ def parse_args():
 def main():
     args = parse_args()
 
-    print("=" * 41)
-    print("Music Atlas Identity Audit")
-    print("=" * 41)
-    print()
-
     session = SessionLocal()
 
     try:
@@ -44,10 +48,12 @@ def main():
 
         summary, results = _split_audit_output(audit_output)
 
-        print(f"Processed:   {summary['processed']}")
-        print(f"Successful: {summary['success']}")
-        print(f"Review:     {summary['review']}")
-        print(f"Failed:     {summary['failed']}")
+        if args.command == "dashboard":
+            dashboard = IdentityAuditDashboard().summary(results)
+            _print_dashboard(dashboard)
+            return
+
+        _print_audit_summary(summary)
 
         if args.format:
             exporter = IdentityAuditExporter(args.output_dir)
@@ -68,6 +74,58 @@ def main():
 
     finally:
         session.close()
+
+
+def _print_audit_summary(summary):
+    print("=" * 41)
+    print("Music Atlas Identity Audit")
+    print("=" * 41)
+    print()
+
+    print(f"Processed:   {summary['processed']}")
+    print(f"Successful: {summary['success']}")
+    print(f"Review:     {summary['review']}")
+    print(f"Failed:     {summary['failed']}")
+
+
+def _print_dashboard(summary):
+    print("=" * 41)
+    print("Identity Audit Dashboard")
+    print("=" * 41)
+    print()
+
+    print(f"Artists audited: {summary['total']}")
+    print()
+    print(f"Passed:         {summary['passed']}")
+    print(f"Needs Review:   {summary['review']}")
+    print(f"Failed:         {summary['failed']}")
+    print()
+
+    print("Confidence")
+    print(f"High:           {summary['confidence']['high']}")
+    print(f"Medium:         {summary['confidence']['medium']}")
+    print(f"Low:            {summary['confidence']['low']}")
+    print()
+
+    print("Provider Success")
+
+    if summary["providers"]:
+        for provider, count in summary["providers"].items():
+            print(f"{provider}: {count}")
+    else:
+        print("None")
+    print()
+
+    print("Common Issues")
+
+    if summary["issues"]:
+        for issue, count in summary["issues"].items():
+            print(f"{issue}: {count}")
+    else:
+        print("None")
+    print()
+
+    print(f"Last Audit: {summary['last_audit']}")
 
 
 def _split_audit_output(audit_output):
