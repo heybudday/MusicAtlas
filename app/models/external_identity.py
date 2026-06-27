@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
 
 
-def utc_now_iso() -> str:
+def utc_now_iso() ->str:
     return datetime.now(UTC).isoformat()
 
 
@@ -21,6 +21,7 @@ class ExternalIdentity(Base):
     url: Mapped[str] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="unverified")
     confidence: Mapped[float] = mapped_column(Float, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(Text, nullable=True)
     last_checked_at: Mapped[str] = mapped_column(Text, nullable=True)
 

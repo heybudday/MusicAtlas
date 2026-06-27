@@ -29,6 +29,7 @@ class ExternalIdentityService:
         external_id: str,
         external_url: str | None = None,
         confidence: float = 1.0,
+        reason: str | None = None,
         source: str = "manual",
     ):
         return self.repository.create(
@@ -38,6 +39,7 @@ class ExternalIdentityService:
             external_id=external_id,
             external_url=external_url,
             confidence=confidence,
+            reason=reason,
             source=source,
         )
 
@@ -49,6 +51,7 @@ class ExternalIdentityService:
         external_id: str,
         external_url: str | None = None,
         confidence: float = 1.0,
+        reason: str | None = None,
         source: str = "manual",
     ):
         existing = self.find(
@@ -59,8 +62,9 @@ class ExternalIdentityService:
 
         if existing:
             existing.external_id = external_id
-            existing.external_url = external_url
+            existing.url = external_url
             existing.confidence = confidence
+            existing.reason = reason
             existing.source = source
 
             self.repository.session.commit()
@@ -73,5 +77,42 @@ class ExternalIdentityService:
             external_id,
             external_url,
             confidence,
+            reason,
             source,
+        )
+
+    def upsert_artist_identity(
+        self,
+        artist: str,
+        best_match: dict,
+    ):
+        result = best_match.get("result", {})
+
+        return self.upsert(
+            entity_type="artist",
+            entity_key=artist,
+            service=best_match.get("provider"),
+            external_id=result.get("external_id"),
+            external_url=result.get("url"),
+            confidence=best_match.get("confidence"),
+            reason=best_match.get("reason"),
+            source="identity_orchestrator",
+        )
+
+    def upsert_label_identity(
+        self,
+        label: str,
+        best_match: dict,
+    ):
+        result = best_match.get("result", {})
+
+        return self.upsert(
+            entity_type="label",
+            entity_key=label,
+            service=best_match.get("provider"),
+            external_id=result.get("external_id"),
+            external_url=result.get("url"),
+            confidence=best_match.get("confidence"),
+            reason=best_match.get("reason"),
+            source="identity_orchestrator",
         )

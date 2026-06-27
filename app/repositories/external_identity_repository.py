@@ -31,6 +31,7 @@ class ExternalIdentityRepository:
         external_id: str,
         external_url: str | None = None,
         confidence: float = 1.0,
+        reason: str | None = None,
         source: str = "manual",
     ) -> ExternalIdentity:
         identity = ExternalIdentity(
@@ -38,7 +39,9 @@ class ExternalIdentityRepository:
             entity_key=entity_key,
             service=service,
             external_id=external_id,
+            url=external_url,
             confidence=confidence,
+            reason=reason,
             source=source,
         )
 

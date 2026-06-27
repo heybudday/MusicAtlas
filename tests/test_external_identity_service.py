@@ -32,10 +32,13 @@ def test_create_find_and_upsert():
         service="spotify",
         external_id="12345",
         confidence=1.0,
+        reason="exact_name_match",
         source="unit_test",
     )
 
     assert created.external_id == "12345"
+    assert created.confidence == 1.0
+    assert created.reason == "exact_name_match"
 
     # Find
 
@@ -47,6 +50,8 @@ def test_create_find_and_upsert():
 
     assert found is not None
     assert found.external_id == "12345"
+    assert found.confidence == 1.0
+    assert found.reason == "exact_name_match"
 
     # Upsert should update existing record
 
@@ -56,11 +61,13 @@ def test_create_find_and_upsert():
         service="spotify",
         external_id="67890",
         confidence=0.95,
+        reason="best_available_match",
         source="updated_test",
     )
 
     assert updated.external_id == "67890"
     assert updated.confidence == 0.95
+    assert updated.reason == "best_available_match"
 
     # Ensure only one record exists
 
@@ -71,4 +78,6 @@ def test_create_find_and_upsert():
     )
 
     assert found_again.external_id == "67890"
+    assert found_again.confidence == 0.95
+    assert found_again.reason == "best_available_match"
     assert found_again.source == "updated_test"
