@@ -58,6 +58,59 @@ class IdentityOrchestrator:
             and best_match.get("confidence", 0) >= self.DEFAULT_PERSIST_THRESHOLD
         )
 
+    def _summarize_result(self, item):
+        result = item.get("result", {})
+
+        return {
+            "provider": item.get("provider"),
+            "confidence": item.get(
+                "confidence",
+                result.get("confidence", 0),
+            ),
+            "reason": item.get(
+                "reason",
+                result.get("reason"),
+            ),
+        }
+
+    def _build_decision_summary(self, best_match, results):
+        if best_match is None:
+            return None
+
+        winner_provider = best_match.get("provider")
+        evaluated = [
+            self._summarize_result(item)
+            for item in results
+        ]
+
+        return {
+            "provider": winner_provider,
+            "confidence": best_match.get("confidence", 0),
+            "reason": best_match.get("reason"),
+            "evaluated": evaluated,
+            "compared_against": [
+                item
+                for item in evaluated
+                if item["provider"] != winner_provider
+            ],
+        }
+
+    def _build_resolution_result(self, best_match, results):
+        if best_match is None:
+            return {
+                "winner": None,
+                "decision": None,
+            }
+
+        return {
+            **best_match,
+            "winner": best_match,
+            "decision": self._build_decision_summary(
+                best_match,
+                results,
+            ),
+        }
+
     def lookup_artist(self, artist, provider):
         cached = self._get_cached_result(provider, "artist", artist)
         if cached is not None:
@@ -117,7 +170,7 @@ class IdentityOrchestrator:
                 best_match,
             )
 
-        return best_match
+        return self._build_resolution_result(best_match, results)
 
     def resolve_label(self, label, providers=None):
         results = self.enrich_label(label, providers)
@@ -132,4 +185,4 @@ class IdentityOrchestrator:
                 best_match,
             )
 
-        return best_match
+        return self._build_resolution_result(best_match, results)
