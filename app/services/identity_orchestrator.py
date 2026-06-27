@@ -9,18 +9,61 @@ class IdentityOrchestrator:
     Coordinates identity lookups across one or more providers.
     """
 
-    def __init__(self, session=None):
+    def __init__(
+        self,
+        session=None,
+        providers=None,
+        enrichment_repository=None,
+    ):
         self.session = session
+        self.providers = providers or {}
+        self.enrichment_repository = enrichment_repository
         self.external_identity_service = (
             ExternalIdentityService(session) if session is not None else None
         )
+
+    def lookup_artist(self, artist, provider):
+        provider_instance = (
+            self.providers.get(provider)
+            or create_provider(provider)
+        )
+
+        result = provider_instance.lookup_artist(artist)
+
+        if self.enrichment_repository is not None:
+            self.enrichment_repository.upsert(result)
+
+        return result
+
+    def lookup_label(self, label, provider):
+        provider_instance = (
+            self.providers.get(provider)
+            or create_provider(provider)
+        )
+
+        result = provider_instance.lookup_label(label)
+
+        if self.enrichment_repository is not None:
+            self.enrichment_repository.upsert(result)
+
+        return result
 
     def enrich_artist(self, artist, providers):
         results = []
 
         for provider_name in providers:
-            provider = create_provider(provider_name)
+            provider = (
+                self.providers.get(provider_name)
+                or create_provider(provider_name)
+            )
+
             result = provider.lookup_artist(artist)
+
+            if (
+                self.enrichment_repository is not None
+                and result.get("matched")
+            ):
+                self.enrichment_repository.upsert(result)
 
             results.append(
                 {
@@ -35,8 +78,18 @@ class IdentityOrchestrator:
         results = []
 
         for provider_name in providers:
-            provider = create_provider(provider_name)
+            provider = (
+                self.providers.get(provider_name)
+                or create_provider(provider_name)
+            )
+
             result = provider.lookup_label(label)
+
+            if (
+                self.enrichment_repository is not None
+                and result.get("matched")
+            ):
+                self.enrichment_repository.upsert(result)
 
             results.append(
                 {
@@ -50,49 +103,39 @@ class IdentityOrchestrator:
     def resolve_artist(self, artist_key, artist_name, providers):
         results = self.enrich_artist(artist_name, providers)
 
-        if self.external_identity_service is None:
-            return results
-
         for item in results:
             provider_name = item["provider"]
             result = item["result"]
 
-            if not result.get("matched"):
-                continue
-
-            self.external_identity_service.upsert(
-                entity_type="artist",
-                entity_key=artist_key,
-                service=provider_name,
-                external_id=result["external_id"],
-                external_url=result.get("url"),
-                confidence=result.get("confidence", 1.0),
-                source="identity_orchestrator",
-            )
+            if result.get("matched") and self.external_identity_service is not None:
+                self.external_identity_service.upsert(
+                    entity_type="artist",
+                    entity_key=artist_key,
+                    service=provider_name,
+                    external_id=result.get("external_id"),
+                    external_url=result.get("url"),
+                    confidence=result.get("confidence"),
+                    source="identity_orchestrator",
+                )
 
         return results
 
     def resolve_label(self, label_key, label_name, providers):
         results = self.enrich_label(label_name, providers)
 
-        if self.external_identity_service is None:
-            return results
-
         for item in results:
             provider_name = item["provider"]
             result = item["result"]
 
-            if not result.get("matched"):
-                continue
-
-            self.external_identity_service.upsert(
-                entity_type="label",
-                entity_key=label_key,
-                service=provider_name,
-                external_id=result["external_id"],
-                external_url=result.get("url"),
-                confidence=result.get("confidence", 1.0),
-                source="identity_orchestrator",
-            )
+            if result.get("matched") and self.external_identity_service is not None:
+                self.external_identity_service.upsert(
+                    entity_type="label",
+                    entity_key=label_key,
+                    service=provider_name,
+                    external_id=result.get("external_id"),
+                    external_url=result.get("url"),
+                    confidence=result.get("confidence"),
+                    source="identity_orchestrator",
+                )
 
         return results
