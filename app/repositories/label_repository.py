@@ -1,13 +1,17 @@
 from sqlalchemy import select
 
 from app.models.label import Label
+from app.repositories.base_repository import BaseRepository
 
 
-def find_by_normalized_name(session, normalized_name: str):
-    stmt = (
-        select(Label)
-        .where(Label.normalized_name == normalized_name)
-        .limit(1)
-    )
+class LabelRepository(BaseRepository):
+    """Repository for Label queries."""
 
-    return session.scalar(stmt)
+    def find_by_normalized_name(self, normalized_name: str) -> Label | None:
+        stmt = (
+            select(Label)
+            .where(Label.normalized_name == normalized_name)
+            .limit(1)
+        )
+
+        return self.session.scalar(stmt)
