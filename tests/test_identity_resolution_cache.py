@@ -5,6 +5,9 @@ class FakeRepository:
     def __init__(self):
         self.saved = None
 
+    def get(self, provider, entity_type, query):
+        return None
+
     def find(self, entity_type, entity_key, service):
         return None
 
@@ -22,7 +25,6 @@ class FakeProvider:
 
 
 def test_orchestrator_saves_lookup():
-
     repo = FakeRepository()
 
     orchestrator = IdentityOrchestrator(

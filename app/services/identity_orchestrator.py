@@ -23,10 +23,7 @@ class IdentityOrchestrator:
         )
 
     def lookup_artist(self, artist, provider):
-        if (
-            self.enrichment_repository is not None
-            and hasattr(self.enrichment_repository, "get")
-        ):
+        if self.enrichment_repository is not None:
             cached = self.enrichment_repository.get(
                 provider,
                 "artist",
