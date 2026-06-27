@@ -71,3 +71,17 @@ class MusicBrainzClient:
             "name": label["name"],
             "score": int(label.get("score", 0)),
         }
+
+    def get_artist(self, mbid: str):
+        response = requests.get(
+            f"{BASE_URL}/artist/{mbid}",
+            params={
+                "fmt": "json",
+            },
+            headers=self.headers,
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
+        return response.json()
