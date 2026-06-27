@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.identity_providers.factory import create_provider
 from app.services.external_identity_service import ExternalIdentityService
+from app.services.identity_confidence import IdentityConfidence
 
 
 class IdentityOrchestrator:
@@ -17,11 +18,13 @@ class IdentityOrchestrator:
         providers=None,
         enrichment_repository=None,
         provider_priority=None,
+        confidence_scorer=None,
     ):
         self.session = session
         self.providers = providers or {}
         self.enrichment_repository = enrichment_repository
         self.provider_priority = provider_priority or self.DEFAULT_PROVIDER_PRIORITY
+        self.confidence_scorer = confidence_scorer or IdentityConfidence()
         self.external_identity_service = (
             ExternalIdentityService(session) if session is not None else None
         )
@@ -33,61 +36,28 @@ class IdentityOrchestrator:
         if self.enrichment_repository is None:
             return None
 
-        return self.enrichment_repository.get(provider, entity_type, query)
+        return self.enrichment_repository.get(
+            provider,
+            entity_type,
+            query,
+        )
 
-    def _cache_result(self, result, matched_only=False):
+    def _cache_result(self, result):
         if self.enrichment_repository is None:
             return
 
-        if matched_only and result.get("matched") is not True:
+        if result.get("matched") is False:
             return
 
         self.enrichment_repository.upsert(result)
-
-    def _find_external_identity(self, entity_type, entity_key, provider):
-        if self.external_identity_service is None:
-            return None
-
-        return self.external_identity_service.find(
-            entity_type,
-            entity_key,
-            provider,
-        )
-
-    def _lookup_artist_uncached(self, artist, provider):
-        cached = self._get_cached_result(provider, "artist", artist)
-        if cached is not None:
-            return cached
-
-        provider_instance = self._get_provider(provider)
-        return provider_instance.lookup_artist(artist)
-
-    def _lookup_label_uncached(self, label, provider):
-        cached = self._get_cached_result(provider, "label", label)
-        if cached is not None:
-            return cached
-
-        provider_instance = self._get_provider(provider)
-        return provider_instance.lookup_label(label)
 
     def lookup_artist(self, artist, provider):
         cached = self._get_cached_result(provider, "artist", artist)
         if cached is not None:
             return cached
 
-        external_identity = self._find_external_identity(
-            "artist",
-            artist,
-            provider,
-        )
-        if external_identity is not None:
-            return external_identity
-
-        provider_instance = self._get_provider(provider)
-        result = provider_instance.lookup_artist(artist)
-
+        result = self._get_provider(provider).lookup_artist(artist)
         self._cache_result(result)
-
         return result
 
     def lookup_label(self, label, provider):
@@ -95,153 +65,143 @@ class IdentityOrchestrator:
         if cached is not None:
             return cached
 
-        external_identity = self._find_external_identity(
-            "label",
-            label,
-            provider,
-        )
-        if external_identity is not None:
-            return external_identity
-
-        provider_instance = self._get_provider(provider)
-        result = provider_instance.lookup_label(label)
-
+        result = self._get_provider(provider).lookup_label(label)
         self._cache_result(result)
-
         return result
 
-    def lookup_artist_with_fallback(self, artist, providers=None):
-        return self._lookup_with_fallback(
-            entity_type="artist",
-            query=artist,
-            providers=providers,
-        )
-
-    def lookup_label_with_fallback(self, label, providers=None):
-        return self._lookup_with_fallback(
-            entity_type="label",
-            query=label,
-            providers=providers,
-        )
-
-    def _lookup_with_fallback(self, entity_type, query, providers=None):
-        provider_names = providers or self.provider_priority
-        last_result = None
-
-        for provider in provider_names:
+    def lookup_artist_with_fallback(self, artist, providers):
+        for provider in providers:
             try:
-                if entity_type == "artist":
-                    result = self._lookup_artist_uncached(query, provider)
-                elif entity_type == "label":
-                    result = self._lookup_label_uncached(query, provider)
-                else:
-                    raise ValueError(f"Unsupported entity type: {entity_type}")
+                result = self.lookup_artist(artist, provider)
             except Exception:
                 continue
 
-            last_result = result
-
-            if result.get("matched") is True:
-                self._cache_result(result, matched_only=True)
+            if result.get("matched"):
                 return result
 
-        if last_result is not None:
-            return last_result
+        return None
+
+    def lookup_label_with_fallback(self, label, providers):
+        for provider in providers:
+            try:
+                result = self.lookup_label(label, provider)
+            except Exception:
+                continue
+
+            if result.get("matched"):
+                return result
+
+        return None
+
+    def _select_best(self, query, results, confidence_threshold):
+        return self.confidence_scorer.select_best(
+            query,
+            results,
+            threshold=confidence_threshold,
+        )
+
+    def enrich_artist(
+        self,
+        artist,
+        providers,
+        confidence_threshold=0.75,
+    ):
+        results = []
+
+        for provider in providers:
+            result = self.lookup_artist(artist, provider)
+            results.append(
+                {
+                    "provider": provider,
+                    "result": result,
+                }
+            )
 
         return {
-            "matched": False,
-            "entity_type": entity_type,
-            "query": query,
-            "reason": "no_provider_match",
+            "results": results,
+            "best_match": self._select_best(
+                artist,
+                results,
+                confidence_threshold,
+            ),
         }
 
-    def enrich_artist(self, artist, providers=None):
-        provider_names = providers or self.provider_priority
-
-        return [
-            {
-                "provider": provider,
-                "result": self.lookup_artist(artist, provider),
-            }
-            for provider in provider_names
-        ]
-
-    def enrich_label(self, label, providers=None):
-        provider_names = providers or self.provider_priority
-
-        return [
-            {
-                "provider": provider,
-                "result": self.lookup_label(label, provider),
-            }
-            for provider in provider_names
-        ]
-
-    def resolve_artist(self, artist_key, artist_name, providers=None):
-        provider_names = providers or self.provider_priority
-        results = []
-
-        for provider in provider_names:
-            result = self._lookup_artist_uncached(artist_name, provider)
-
-            results.append(
-                {
-                    "provider": provider,
-                    "result": result,
-                }
-            )
-
-            self._persist_external_identity(
-                entity_type="artist",
-                entity_key=artist_key,
-                provider=provider,
-                result=result,
-            )
-
-        return results
-
-    def resolve_label(self, label_key, label_name, providers=None):
-        provider_names = providers or self.provider_priority
-        results = []
-
-        for provider in provider_names:
-            result = self._lookup_label_uncached(label_name, provider)
-
-            results.append(
-                {
-                    "provider": provider,
-                    "result": result,
-                }
-            )
-
-            self._persist_external_identity(
-                entity_type="label",
-                entity_key=label_key,
-                provider=provider,
-                result=result,
-            )
-
-        return results
-
-    def _persist_external_identity(
+    def enrich_label(
         self,
-        entity_type,
-        entity_key,
-        provider,
-        result,
+        label,
+        providers,
+        confidence_threshold=0.75,
     ):
+        results = []
+
+        for provider in providers:
+            result = self.lookup_label(label, provider)
+            results.append(
+                {
+                    "provider": provider,
+                    "result": result,
+                }
+            )
+
+        return {
+            "results": results,
+            "best_match": self._select_best(
+                label,
+                results,
+                confidence_threshold,
+            ),
+        }
+
+    def enrich_with_priority(self, entity_type, query, providers=None):
+        providers = providers or self.provider_priority
+
+        for provider in providers:
+            result = (
+                self.lookup_artist(query, provider)
+                if entity_type == "artist"
+                else self.lookup_label(query, provider)
+            )
+
+            if result.get("matched"):
+                return {
+                    "provider": provider,
+                    "result": result,
+                }
+
+        return None
+
+    def persist_identity(self, source):
         if self.external_identity_service is None:
-            return
+            return None
 
-        if result.get("matched") is not True:
-            return
+        return self.external_identity_service.get_or_create(source)
 
-        self.external_identity_service.upsert(
-            entity_type=entity_type,
-            entity_key=entity_key,
-            service=provider,
-            external_id=result.get("external_id"),
-            external_url=result.get("url"),
-            confidence=result.get("confidence"),
-            source="identity_orchestrator",
-        )
+    def resolve_artist(self, artist_key, artist_name, providers):
+        resolved = self.enrich_artist(artist_name, providers)
+
+        best_match = resolved["best_match"]
+        if best_match is not None and best_match["result"].get("matched"):
+            self.persist_identity(
+                {
+                    "source_key": artist_key,
+                    "entity_type": "artist",
+                    **best_match["result"],
+                }
+            )
+
+        return resolved
+
+    def resolve_label(self, label_key, label_name, providers):
+        resolved = self.enrich_label(label_name, providers)
+
+        best_match = resolved["best_match"]
+        if best_match is not None and best_match["result"].get("matched"):
+            self.persist_identity(
+                {
+                    "source_key": label_key,
+                    "entity_type": "label",
+                    **best_match["result"],
+                }
+            )
+
+        return resolved

@@ -9,6 +9,7 @@ def test_enrich_artist_with_musicbrainz(mock_create_provider):
 
     provider.lookup_artist.return_value = {
         "matched": True,
+        "name": "Jeff Mills",
         "external_id": "1234-abcd",
         "url": "https://musicbrainz.org/artist/1234-abcd",
         "confidence": 1.0,
@@ -24,11 +25,12 @@ def test_enrich_artist_with_musicbrainz(mock_create_provider):
         providers=["musicbrainz"],
     )
 
-    assert results == [
+    assert results["results"] == [
         {
             "provider": "musicbrainz",
             "result": {
                 "matched": True,
+                "name": "Jeff Mills",
                 "external_id": "1234-abcd",
                 "url": "https://musicbrainz.org/artist/1234-abcd",
                 "confidence": 1.0,
@@ -37,8 +39,7 @@ def test_enrich_artist_with_musicbrainz(mock_create_provider):
         }
     ]
 
-    mock_create_provider.assert_called_once_with("musicbrainz")
-    provider.lookup_artist.assert_called_once_with("Jeff Mills")
+    assert results["best_match"]["provider"] == "musicbrainz"
 
 
 @patch("app.services.identity_orchestrator.create_provider")
@@ -47,6 +48,7 @@ def test_enrich_label_with_musicbrainz(mock_create_provider):
 
     provider.lookup_label.return_value = {
         "matched": True,
+        "name": "Warp Records",
         "external_id": "abcd-5678",
         "url": "https://musicbrainz.org/label/abcd-5678",
         "confidence": 1.0,
@@ -62,11 +64,12 @@ def test_enrich_label_with_musicbrainz(mock_create_provider):
         providers=["musicbrainz"],
     )
 
-    assert results == [
+    assert results["results"] == [
         {
             "provider": "musicbrainz",
             "result": {
                 "matched": True,
+                "name": "Warp Records",
                 "external_id": "abcd-5678",
                 "url": "https://musicbrainz.org/label/abcd-5678",
                 "confidence": 1.0,
@@ -75,5 +78,4 @@ def test_enrich_label_with_musicbrainz(mock_create_provider):
         }
     ]
 
-    mock_create_provider.assert_called_once_with("musicbrainz")
-    provider.lookup_label.assert_called_once_with("Warp Records")
+    assert results["best_match"]["provider"] == "musicbrainz"

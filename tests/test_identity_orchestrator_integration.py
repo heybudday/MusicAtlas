@@ -12,6 +12,7 @@ def test_resolve_artist_persists_matched_identity(
     provider = Mock()
     provider.lookup_artist.return_value = {
         "matched": True,
+        "name": "Jeff Mills",
         "external_id": "1234-abcd",
         "url": "https://musicbrainz.org/artist/1234-abcd",
         "confidence": 1.0,
@@ -32,11 +33,12 @@ def test_resolve_artist_persists_matched_identity(
         providers=["musicbrainz"],
     )
 
-    assert results == [
+    assert results["results"] == [
         {
             "provider": "musicbrainz",
             "result": {
                 "matched": True,
+                "name": "Jeff Mills",
                 "external_id": "1234-abcd",
                 "url": "https://musicbrainz.org/artist/1234-abcd",
                 "confidence": 1.0,
@@ -45,14 +47,19 @@ def test_resolve_artist_persists_matched_identity(
         }
     ]
 
-    external_identity_service.upsert.assert_called_once_with(
-        entity_type="artist",
-        entity_key="artist_unresolved:jeff-mills",
-        service="musicbrainz",
-        external_id="1234-abcd",
-        external_url="https://musicbrainz.org/artist/1234-abcd",
-        confidence=1.0,
-        source="identity_orchestrator",
+    assert results["best_match"]["provider"] == "musicbrainz"
+
+    external_identity_service.get_or_create.assert_called_once_with(
+        {
+            "source_key": "artist_unresolved:jeff-mills",
+            "entity_type": "artist",
+            "matched": True,
+            "name": "Jeff Mills",
+            "external_id": "1234-abcd",
+            "url": "https://musicbrainz.org/artist/1234-abcd",
+            "confidence": 1.0,
+            "reason": "musicbrainz_artist_match",
+        }
     )
 
 
@@ -65,6 +72,7 @@ def test_resolve_label_persists_matched_identity(
     provider = Mock()
     provider.lookup_label.return_value = {
         "matched": True,
+        "name": "Warp Records",
         "external_id": "abcd-5678",
         "url": "https://musicbrainz.org/label/abcd-5678",
         "confidence": 1.0,
@@ -85,11 +93,12 @@ def test_resolve_label_persists_matched_identity(
         providers=["musicbrainz"],
     )
 
-    assert results == [
+    assert results["results"] == [
         {
             "provider": "musicbrainz",
             "result": {
                 "matched": True,
+                "name": "Warp Records",
                 "external_id": "abcd-5678",
                 "url": "https://musicbrainz.org/label/abcd-5678",
                 "confidence": 1.0,
@@ -98,14 +107,19 @@ def test_resolve_label_persists_matched_identity(
         }
     ]
 
-    external_identity_service.upsert.assert_called_once_with(
-        entity_type="label",
-        entity_key="label_unresolved:warp-records",
-        service="musicbrainz",
-        external_id="abcd-5678",
-        external_url="https://musicbrainz.org/label/abcd-5678",
-        confidence=1.0,
-        source="identity_orchestrator",
+    assert results["best_match"]["provider"] == "musicbrainz"
+
+    external_identity_service.get_or_create.assert_called_once_with(
+        {
+            "source_key": "label_unresolved:warp-records",
+            "entity_type": "label",
+            "matched": True,
+            "name": "Warp Records",
+            "external_id": "abcd-5678",
+            "url": "https://musicbrainz.org/label/abcd-5678",
+            "confidence": 1.0,
+            "reason": "musicbrainz_label_match",
+        }
     )
 
 
@@ -118,6 +132,7 @@ def test_resolve_artist_does_not_persist_unmatched_identity(
     provider = Mock()
     provider.lookup_artist.return_value = {
         "matched": False,
+        "name": "Unknown Artist",
         "external_id": None,
         "url": None,
         "confidence": 0.0,
@@ -132,10 +147,11 @@ def test_resolve_artist_does_not_persist_unmatched_identity(
     session = Mock()
     orchestrator = IdentityOrchestrator(session=session)
 
-    orchestrator.resolve_artist(
+    results = orchestrator.resolve_artist(
         artist_key="artist_unresolved:unknown",
         artist_name="Unknown Artist",
         providers=["musicbrainz"],
     )
 
-    external_identity_service.upsert.assert_not_called()
+    assert results["best_match"] is None
+    external_identity_service.get_or_create.assert_not_called()
