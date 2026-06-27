@@ -6,3 +6,4 @@ requests
 rapidfuzz
 SQLAlchemy
 alembic
+pytest
