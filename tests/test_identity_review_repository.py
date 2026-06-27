@@ -84,6 +84,7 @@ def test_approve_review(db_session):
     repository.approve(review)
 
     assert review.status == "approved"
+    assert review.reviewed_at is not None
 
 
 def test_reject_review(db_session):
@@ -105,3 +106,4 @@ def test_reject_review(db_session):
     repository.reject(review)
 
     assert review.status == "rejected"
+    assert review.reviewed_at is not None

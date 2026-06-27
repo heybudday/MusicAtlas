@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.identity_providers.factory import create_provider
 from app.services.external_identity_service import ExternalIdentityService
 from app.services.identity_confidence import IdentityConfidence
+from app.services.identity_review import IdentityReviewService
 
 
 class IdentityOrchestrator:
@@ -11,6 +12,7 @@ class IdentityOrchestrator:
     - multi-provider enrichment
     - deterministic confidence scoring
     - decision + persistence layer
+    - human review queue
     """
 
     DEFAULT_PROVIDER_PRIORITY = ["discogs", "musicbrainz"]
@@ -25,6 +27,7 @@ class IdentityOrchestrator:
         provider_priority=None,
         confidence_scorer=None,
         external_identity_service=None,
+        identity_review_service=None,
     ):
         self.session = session
         self.providers = providers or {}
@@ -36,6 +39,11 @@ class IdentityOrchestrator:
         self.external_identity_service = (
             external_identity_service
             or (ExternalIdentityService(session) if session is not None else None)
+        )
+
+        self.identity_review_service = (
+            identity_review_service
+            or (IdentityReviewService(session) if session is not None else None)
         )
 
     # -------------------------
@@ -248,12 +256,40 @@ class IdentityOrchestrator:
             "decision": decision,
         }
 
+        self._maybe_enqueue_review(name, best, review_recommended)
         self._maybe_persist(name, best)
 
         return result
 
     def resolve_label(self, name: str, providers: list[str] | None = None):
         return self.resolve_artist(name, providers)
+
+    # -------------------------
+    # Human review queue
+    # -------------------------
+    def _maybe_enqueue_review(
+        self,
+        name: str,
+        bundle: dict,
+        review_recommended: bool,
+    ):
+        if not review_recommended:
+            return
+
+        if self.identity_review_service is None:
+            return
+
+        candidate = bundle.get("result", {}) or {}
+
+        self.identity_review_service.enqueue(
+            entity_type="artist",
+            entity_key=name,
+            provider=bundle.get("provider"),
+            candidate_external_id=candidate.get("external_id"),
+            candidate_name=candidate.get("name"),
+            confidence=bundle.get("confidence", 0.0),
+            reason=bundle.get("reason") or "ambiguous_identity_match",
+        )
 
     # -------------------------
     # Persistence
