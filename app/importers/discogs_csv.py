@@ -7,6 +7,7 @@ from typing import Dict, List
 from app.database import SessionLocal
 from app.models.artist import Artist
 from app.models.label import Label
+from app.utils.normalization import normalize_name
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -71,10 +72,6 @@ def summarize_rows(rows: List[Dict[str, str]]) -> Dict[str, int]:
         "artists": len(artists),
         "labels": len(labels),
     }
-
-
-def normalize_name(name: str) -> str:
-    return name.strip().lower()
 
 
 def _get_value(row: Dict[str, str], *keys: str) -> str | None:

@@ -1,48 +1,64 @@
 from app.database import SessionLocal
-from app.services.identity_resolver import IdentityResolver
+from app.repositories.artist_repository import ArtistRepository
+from app.repositories.label_repository import LabelRepository
+from app.repositories.release_repository import ReleaseRepository
+from app.services.identity_resolution import (
+    resolve_artist,
+    resolve_label,
+    resolve_release_artists,
+    resolve_release_labels,
+)
 
 
 def main():
     session = SessionLocal()
 
-    resolver = IdentityResolver(session)
+    try:
+        artist_repository = ArtistRepository(session)
+        label_repository = LabelRepository(session)
+        release_repository = ReleaseRepository(session)
 
-    print("=" * 40)
-    print("Artist Lookup")
-    print("=" * 40)
+        print("=" * 40)
+        print("Artist Lookup")
+        print("=" * 40)
 
-    result = resolver.find_matching_artist("Jeff Mills")
-    print(result)
+        print(resolve_artist(artist_repository, "Jeff Mills"))
+        print()
+        print(resolve_artist(artist_repository, "The Persuader"))
+        print()
+        print(resolve_artist(artist_repository, "Definitely Not An Artist"))
+        print()
 
-    print()
+        print("=" * 40)
+        print("Label Lookup")
+        print("=" * 40)
 
-    result = resolver.find_matching_artist("The Persuader")
-    print(result)
+        print(resolve_label(label_repository, "Svek"))
+        print()
+        print(resolve_label(label_repository, "Warp Records"))
+        print()
+        print(resolve_label(label_repository, "Definitely Not A Label"))
+        print()
 
-    print()
+        print("=" * 40)
+        print("Release Resolution")
+        print("=" * 40)
 
-    result = resolver.find_matching_artist("This Artist Does Not Exist")
-    print(result)
+        release = release_repository.get_release_graph(1)
 
-    print()
-    print("=" * 40)
-    print("Label Lookup")
-    print("=" * 40)
+        if release is None:
+            print("Release not found.")
+            return
 
-    result = resolver.find_matching_label("Svek")
-    print(result)
+        print("Artists")
+        print(resolve_release_artists(session, release))
+        print()
 
-    print()
+        print("Labels")
+        print(resolve_release_labels(session, release))
 
-    result = resolver.find_matching_label("Warp Records")
-    print(result)
-
-    print()
-
-    result = resolver.find_matching_label("This Label Does Not Exist")
-    print(result)
-
-    session.close()
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":
