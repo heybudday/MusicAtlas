@@ -79,6 +79,21 @@ class IdentityOrchestrator:
         results = []
 
         for provider_name in providers:
+            if self.enrichment_repository is not None:
+                cached = self.enrichment_repository.get(
+                    provider_name,
+                    "artist",
+                    artist,
+                )
+                if cached is not None:
+                    results.append(
+                        {
+                            "provider": provider_name,
+                            "result": cached,
+                        }
+                    )
+                    continue
+
             provider = (
                 self.providers.get(provider_name)
                 or create_provider(provider_name)
@@ -105,6 +120,21 @@ class IdentityOrchestrator:
         results = []
 
         for provider_name in providers:
+            if self.enrichment_repository is not None:
+                cached = self.enrichment_repository.get(
+                    provider_name,
+                    "label",
+                    label,
+                )
+                if cached is not None:
+                    results.append(
+                        {
+                            "provider": provider_name,
+                            "result": cached,
+                        }
+                    )
+                    continue
+
             provider = (
                 self.providers.get(provider_name)
                 or create_provider(provider_name)
