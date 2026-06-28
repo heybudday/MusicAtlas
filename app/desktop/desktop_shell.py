@@ -30,4 +30,12 @@ class DesktopShell:
         return command.execute()
 
     def process_input(self, user_input: str):
-        return self.execute_command(user_input)
+        if user_input.strip().lower() == "exit":
+            return False
+
+        result = self.execute_command(user_input)
+
+        if result is None:
+            return f"Unknown command: {user_input}"
+
+        return result
