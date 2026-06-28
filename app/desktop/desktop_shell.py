@@ -1,55 +1,28 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
-
-from app.application import Application
-from app.services.service_registry import ServiceRegistry
-from app.ui.command_dispatcher import CommandDispatcher
-
 
 class DesktopShell:
     """
-    Desktop application shell.
-
-    Owns desktop-facing behavior while delegating shared application
-    services to the Application instance.
+    Desktop shell entry point.
     """
 
-    def __init__(self, application: Application):
-        self.application = application
-        self.services: ServiceRegistry = application.services
-        self.dispatcher: CommandDispatcher = application.dispatcher
+    def __init__(self, app=None):
+        self.app = app
+        self.dispatcher = app.dispatcher if app else None
+        self.services = app.services if app else None
 
-    def run(
-        self,
-        input_func: Callable[[str], str] | None = None,
-        output_func: Callable[[Any], None] = print,
-    ) -> bool:
-        if input_func is None:
-            return True
+    def set_app(self, app):
+        self.app = app
+        self.dispatcher = app.dispatcher
+        self.services = app.services
 
-        while True:
-            result = self.process_input(input_func("> "))
+    def run_once(self, input_line: str):
+        parts = input_line.strip().split()
 
-            if result is False:
-                return True
-
-            if result is not None:
-                output_func(result)
-
-    def execute_command(self, command_name: str):
-        command = self.services.command_registry.get(command_name)
-
-        if command is None:
+        if not parts:
             return None
 
-        return command.execute()
+        command_name = parts[0]
+        args = parts[1:]
 
-    def process_input(self, user_input: str):
-        result = self.execute_command(user_input.strip().lower())
-
-        if result is None:
-            return f"Unknown command: {user_input}"
-
-        return result
+        return self.dispatcher.dispatch(command_name, *args)

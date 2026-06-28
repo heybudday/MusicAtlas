@@ -1,11 +1,9 @@
-from __future__ import annotations
-
 from app.ui.command import Command
-from app.ui.command_registry import CommandRegistry
 from app.ui.exit_command import ExitCommand
+from app.ui.open_command import OpenCommand
 
 
-def register_default_commands(registry: CommandRegistry) -> None:
+def register_default_commands(registry):
     registry.register(
         Command(
             name="hello",
@@ -24,5 +22,8 @@ def register_default_commands(registry: CommandRegistry) -> None:
             description="Lists available commands",
         )
     )
+
+    # FIX: ensure OpenCommand exists
+    registry.register(OpenCommand())
 
     registry.register(ExitCommand())
