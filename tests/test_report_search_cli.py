@@ -1,97 +1,127 @@
-from app.cli.report_search import ReportSearchCLI
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from app.cli.report_search import main
 
 
-class FakeService:
-    def __init__(self, reports):
-        self.reports = reports
-        self.kwargs = None
-
-    def search(self, **kwargs):
-        self.kwargs = kwargs
-        return self.reports
+def write_report(path: Path, filename: str, data: dict) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    (path / filename).write_text(json.dumps(data), encoding="utf-8")
 
 
-REPORTS = [
-    {
-        "filename": "identity_audit.json",
-        "report_type": "identity_audit",
-        "status": "complete",
-        "created_at": "2026-06-27",
-    }
-]
+def test_search_cli_prints_matching_reports(tmp_path, capsys):
+    archive_dir = tmp_path / "reports"
 
+    write_report(
+        archive_dir,
+        "jeff-mills.json",
+        {
+            "report_type": "identity",
+            "artist": "Jeff Mills",
+        },
+    )
+    write_report(
+        archive_dir,
+        "robert-hood.json",
+        {
+            "report_type": "identity",
+            "artist": "Robert Hood",
+        },
+    )
 
-def build_cli(reports):
-    cli = ReportSearchCLI.__new__(ReportSearchCLI)
-    cli.service = FakeService(reports)
-    return cli
-
-
-def test_no_results(capsys):
-    cli = build_cli([])
-
-    cli.run([])
+    exit_code = main(["Jeff", "--archive-dir", str(archive_dir)])
 
     output = capsys.readouterr().out
 
-    assert "Found 0 report(s)." in output
+    assert exit_code == 0
+    assert "jeff-mills.json" in output
+    assert "Jeff Mills" in output
+    assert "robert-hood.json" not in output
 
 
-def test_search_by_type():
-    cli = build_cli(REPORTS)
+def test_search_cli_filters_by_report_type(tmp_path, capsys):
+    archive_dir = tmp_path / "reports"
 
-    cli.run(["--type", "identity_audit"])
+    write_report(
+        archive_dir,
+        "identity.json",
+        {
+            "report_type": "identity",
+            "artist": "Jeff Mills",
+        },
+    )
+    write_report(
+        archive_dir,
+        "audit.json",
+        {
+            "report_type": "audit",
+            "artist": "Jeff Mills",
+        },
+    )
 
-    assert cli.service.kwargs["report_type"] == "identity_audit"
-
-
-def test_search_by_status():
-    cli = build_cli(REPORTS)
-
-    cli.run(["--status", "complete"])
-
-    assert cli.service.kwargs["status"] == "complete"
-
-
-def test_combined_filters():
-    cli = build_cli(REPORTS)
-
-    cli.run(
+    exit_code = main(
         [
-            "--type",
-            "identity_audit",
-            "--status",
-            "complete",
-            "--contains",
-            "audit",
-            "--limit",
-            "5",
+            "Jeff",
+            "--archive-dir",
+            str(archive_dir),
+            "--report-type",
+            "identity",
         ]
     )
 
-    assert cli.service.kwargs == {
-        "report_type": "identity_audit",
-        "status": "complete",
-        "filename_contains": "audit",
-        "limit": 5,
-    }
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "identity.json" in output
+    assert "audit.json" not in output
 
 
-def test_output_contains_report_information(capsys):
-    cli = build_cli(REPORTS)
+def test_search_cli_returns_all_when_no_filters(tmp_path, capsys):
+    archive_dir = tmp_path / "reports"
 
-    cli.run([])
+    write_report(
+        archive_dir,
+        "identity.json",
+        {
+            "report_type": "identity",
+            "artist": "Jeff Mills",
+        },
+    )
+    write_report(
+        archive_dir,
+        "audit.json",
+        {
+            "report_type": "audit",
+            "artist": "Robert Hood",
+        },
+    )
+
+    exit_code = main(["--archive-dir", str(archive_dir)])
 
     output = capsys.readouterr().out
 
-    assert "identity_audit" in output
-    assert "complete" in output
-    assert "identity_audit.json" in output
+    assert exit_code == 0
+    assert "identity.json" in output
+    assert "audit.json" in output
 
 
-def test_limit_option():
-    cli = build_cli(REPORTS)
+def test_search_cli_prints_message_when_no_results(tmp_path, capsys):
+    archive_dir = tmp_path / "reports"
 
-    cli.run(["--limit", "1"])
+    write_report(
+        archive_dir,
+        "jeff-mills.json",
+        {
+            "report_type": "identity",
+            "artist": "Jeff Mills",
+        },
+    )
 
-    assert cli.service.kwargs["limit"] == 1
+    exit_code = main(["Aphex", "--archive-dir", str(archive_dir)])
+
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "No matching reports found." in output
