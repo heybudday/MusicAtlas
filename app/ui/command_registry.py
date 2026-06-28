@@ -21,13 +21,15 @@ class CommandRegistry:
         else:
             raise TypeError("register() expects (command) or (name, command)")
 
-        self._commands[name] = command
+        normalized_name = self._normalize(name)
+        self._commands[normalized_name] = command
 
         for alias in getattr(command, "aliases", []):
-            self._aliases[alias] = name
+            self._aliases[self._normalize(alias)] = normalized_name
 
     def get(self, command_name: str) -> Command | None:
-        resolved_name = self._aliases.get(command_name, command_name)
+        normalized_name = self._normalize(command_name)
+        resolved_name = self._aliases.get(normalized_name, normalized_name)
 
         return self._commands.get(resolved_name)
 
@@ -37,3 +39,6 @@ class CommandRegistry:
 
     def list_commands(self) -> list[Command]:
         return self.commands
+
+    def _normalize(self, command_name: str) -> str:
+        return command_name.strip().lower()
