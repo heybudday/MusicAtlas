@@ -1,102 +1,53 @@
+from __future__ import annotations
+
 from datetime import datetime
-from time import sleep
+
+import pytest
 
 from app.services.report_archive_service import ReportArchiveService
 
 
-def test_archive_creates_record():
-    service = ReportArchiveService()
+def test_archive_report_copies_file_to_dated_report_type_directory(tmp_path):
+    source = tmp_path / "identity_report.csv"
+    source.write_text("artist,status\nJeff Mills,resolved\n")
 
-    entry = service.archive(
-        report_type="identity",
-        filename="identity.csv",
-        path="/reports/identity.csv",
-        record_count=123,
+    archive_root = tmp_path / "archive"
+    service = ReportArchiveService(archive_root)
+
+    archived_path = service.archive_report(
+        source,
+        "identity",
+        timestamp=datetime(2026, 6, 27, 14, 30, 5),
     )
 
-    assert entry["id"] == 1
-    assert entry["report_type"] == "identity"
-    assert entry["filename"] == "identity.csv"
-    assert entry["path"] == "/reports/identity.csv"
-    assert entry["record_count"] == 123
+    assert archived_path == (
+        archive_root / "identity" / "2026-06-27" / "identity_report_143005.csv"
+    )
+    assert archived_path.read_text() == "artist,status\nJeff Mills,resolved\n"
 
 
-def test_archive_assigns_timestamp():
-    service = ReportArchiveService()
+def test_archive_report_preserves_source_file(tmp_path):
+    source = tmp_path / "summary.txt"
+    source.write_text("summary contents")
 
-    entry = service.archive(
-        report_type="identity",
-        filename="identity.csv",
-        path="/reports/identity.csv",
-        record_count=10,
+    service = ReportArchiveService(tmp_path / "archive")
+
+    service.archive_report(
+        source,
+        "summary",
+        timestamp=datetime(2026, 6, 27, 9, 0, 0),
     )
 
-    assert isinstance(entry["generated_at"], datetime)
+    assert source.exists()
+    assert source.read_text() == "summary contents"
 
 
-def test_list_returns_newest_first():
-    service = ReportArchiveService()
+def test_archive_report_raises_for_missing_source(tmp_path):
+    service = ReportArchiveService(tmp_path / "archive")
 
-    first = service.archive(
-        report_type="identity",
-        filename="first.csv",
-        path="/reports/first.csv",
-        record_count=1,
-    )
-
-    sleep(0.01)
-
-    second = service.archive(
-        report_type="identity",
-        filename="second.csv",
-        path="/reports/second.csv",
-        record_count=2,
-    )
-
-    reports = service.list_reports()
-
-    assert reports[0]["id"] == second["id"]
-    assert reports[1]["id"] == first["id"]
-
-
-def test_get_returns_correct_report():
-    service = ReportArchiveService()
-
-    entry = service.archive(
-        report_type="identity",
-        filename="identity.csv",
-        path="/reports/identity.csv",
-        record_count=5,
-    )
-
-    report = service.get(entry["id"])
-
-    assert report == entry
-
-
-def test_get_by_filename_returns_correct_report():
-    service = ReportArchiveService()
-
-    entry = service.archive(
-        report_type="identity",
-        filename="identity.csv",
-        path="/reports/identity.csv",
-        record_count=5,
-    )
-
-    report = service.get_by_filename("identity.csv")
-
-    assert report == entry
-
-
-def test_unknown_report_returns_none():
-    service = ReportArchiveService()
-
-    assert service.get(999) is None
-    assert service.get_by_filename("missing.csv") is None
-
-
-def test_empty_archive_returns_empty_list():
-    service = ReportArchiveService()
-
-    assert service.list_reports() == []
+    with pytest.raises(FileNotFoundError):
+        service.archive_report(
+            tmp_path / "missing.csv",
+            "identity",
+            timestamp=datetime(2026, 6, 27, 14, 30, 5),
+        )

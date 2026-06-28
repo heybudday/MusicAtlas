@@ -1,53 +1,38 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
+from shutil import copyfile
 
 
 class ReportArchiveService:
     """
-    Maintains an in-memory archive of generated reports.
+    Archives generated report files into a dated archive directory.
     """
 
-    def __init__(self):
-        self._reports = []
-        self._next_id = 1
+    def __init__(self, archive_root: str | Path = "reports/archive"):
+        self.archive_root = Path(archive_root)
 
-    def archive(
+    def archive_report(
         self,
+        source_path: str | Path,
         report_type: str,
-        filename: str,
-        path: str,
-        record_count: int,
-    ):
-        entry = {
-            "id": self._next_id,
-            "report_type": report_type,
-            "filename": filename,
-            "path": path,
-            "record_count": record_count,
-            "generated_at": datetime.utcnow(),
-        }
+        timestamp: datetime | None = None,
+    ) -> Path:
+        source = Path(source_path)
 
-        self._reports.append(entry)
-        self._next_id += 1
+        if not source.exists():
+            raise FileNotFoundError(f"Report file not found: {source}")
 
-        return entry
+        created_at = timestamp or datetime.now()
+        archive_dir = self.archive_root / report_type / created_at.strftime("%Y-%m-%d")
+        archive_dir.mkdir(parents=True, exist_ok=True)
 
-    def list_reports(self):
-        return sorted(
-            self._reports,
-            key=lambda report: report["generated_at"],
-            reverse=True,
-        )
+        archived_path = archive_dir / self._archive_filename(source, created_at)
+        copyfile(source, archived_path)
 
-    def get(self, report_id):
-        for report in self._reports:
-            if report["id"] == report_id:
-                return report
-        return None
+        return archived_path
 
-    def get_by_filename(self, filename):
-        for report in self._reports:
-            if report["filename"] == filename:
-                return report
-        return None
+    def _archive_filename(self, source: Path, created_at: datetime) -> str:
+        timestamp = created_at.strftime("%H%M%S")
+        return f"{source.stem}_{timestamp}{source.suffix}"
