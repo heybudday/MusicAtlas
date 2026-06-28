@@ -1,8 +1,17 @@
 import sys
 from pathlib import Path
 
-from database import Base, engine
-from importers.discogs_csv import import_discogs_csv
+project_root = Path(__file__).resolve().parent.parent
+
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from app.database import Base, engine
+from app.importers.discogs_csv import import_discogs_csv
+from app.repositories.identity_resolution_repository import (
+    IdentityResolutionRepository,
+)
+from app.services.identity_report_service import IdentityReportService
 
 
 def initialize_database():
@@ -23,6 +32,24 @@ def run_import(csv_path: str):
     print(f"Labels: {summary['labels']}")
 
 
+def run_identity_report():
+    """Generate and display the identity resolution report."""
+    repository = IdentityResolutionRepository()
+    service = IdentityReportService(repository=repository)
+
+    report = service.generate_report()
+
+    print("Identity Resolution Report")
+    print("=" * 40)
+    print(f"Total: {report['total']}")
+    print(f"Resolved: {report['resolved']}")
+    print(f"Review: {report['review']}")
+    print(f"Unresolved: {report['unresolved']}")
+    print(f"Resolution Rate: {report['resolution_rate']:.1%}")
+    print(f"Review Rate: {report['review_rate']:.1%}")
+    print(f"Average Confidence: {report['average_confidence']:.2f}")
+
+
 def main():
     initialize_database()
 
@@ -30,15 +57,15 @@ def main():
         run_import(sys.argv[2])
         return
 
+    if len(sys.argv) == 2 and sys.argv[1] == "identity-report":
+        run_identity_report()
+        return
+
     print("=" * 40)
     print("Music Atlas")
     print("=" * 40)
-
-    project_root = Path(__file__).resolve().parent.parent
-
     print(f"Project: {project_root}")
     print("Database initialized.")
-    print("Ready.")
 
 
 if __name__ == "__main__":
