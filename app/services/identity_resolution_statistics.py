@@ -2,63 +2,63 @@ from __future__ import annotations
 
 
 class IdentityResolutionStatistics:
-    """
-    Computes summary statistics for identity resolution results.
-    """
+    def __init__(self, repository=None):
+        self.repository = repository
 
-    def summarize(self, records):
+    def summarize(self, records=None):
         records = records or []
 
         total = len(records)
+        resolved = self._count_status(records, "resolved")
+        review = self._count_status(records, "review")
+        unresolved = self._count_status(records, "unresolved")
 
-        resolved = sum(
-            1 for r in records if r.get("status") == "resolved"
-        )
-
-        review = sum(
-            1 for r in records if r.get("status") == "review"
-        )
-
-        unresolved = sum(
-            1 for r in records if r.get("status") == "unresolved"
-        )
+        pending_review = self._count_status(records, "pending_review")
+        auto_resolved = self._count_status(records, "auto_resolved")
+        manual_review = self._count_status(records, "manual_review")
+        failed = self._count_status(records, "failed")
 
         confidences = [
-            r["confidence"]
-            for r in records
-            if r.get("confidence") is not None
+            record.get("confidence")
+            for record in records
+            if record.get("confidence") is not None
         ]
-
-        if confidences:
-            average_confidence = round(
-                sum(confidences) / len(confidences),
-                3,
-            )
-            highest_confidence = max(confidences)
-            lowest_confidence = min(confidences)
-        else:
-            average_confidence = 0.0
-            highest_confidence = 0.0
-            lowest_confidence = 0.0
-
-        if total:
-            resolution_rate = resolved / total
-            review_rate = review / total
-            unresolved_rate = unresolved / total
-        else:
-            resolution_rate = 0.0
-            review_rate = 0.0
-            unresolved_rate = 0.0
 
         return {
             "total": total,
             "resolved": resolved,
             "review": review,
             "unresolved": unresolved,
-            "resolution_rate": resolution_rate,
-            "review_rate": review_rate,
-            "unresolved_rate": unresolved_rate,
-            "average_confidence": average_confidence,
-            "highest_confidence": highest_confidence,
-            "lowest_confidence": lowest_confidence,
+            "pending_review": pending_review,
+            "auto_resolved": auto_resolved,
+            "manual_review": manual_review,
+            "failed": failed,
+            "resolution_rate": resolved / total if total else 0.0,
+            "review_rate": review / total if total else 0.0,
+            "unresolved_rate": unresolved / total if total else 0.0,
+            "average_confidence": (
+                sum(confidences) / len(confidences) if confidences else 0.0
+            ),
+            "highest_confidence": max(confidences) if confidences else 0.0,
+            "lowest_confidence": min(confidences) if confidences else 0.0,
         }
+
+    def summary(self, records=None):
+        if self.repository is not None and records is None:
+            total = self.repository.total_artists()
+            resolved = self.repository.resolved()
+
+            return {
+                "total": total,
+                "resolved": resolved,
+                "pending_review": self.repository.pending_review(),
+                "auto_resolved": self.repository.auto_resolved(),
+                "manual_review": self.repository.manual_review(),
+                "failed": self.repository.failed(),
+                "resolution_rate": resolved / total if total else 0.0,
+            }
+
+        return self.summarize(records)
+
+    def _count_status(self, records, status):
+        return sum(1 for record in records if record.get("status") == status)
