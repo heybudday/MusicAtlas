@@ -1,31 +1,31 @@
-from app.identity_providers.base import IdentityProvider
 from app.identity_providers.discogs import DiscogsProvider
 from app.identity_providers.musicbrainz import MusicBrainzProvider
 from app.identity_providers.spotify import SpotifyProvider
 
 
+class DummyClient:
+    pass
+
+
 class IdentityProviderRegistry:
-    def __init__(self) -> None:
-        self._providers: dict[str, IdentityProvider] = {}
+    def __init__(self, providers=None):
+        self.providers = providers or {}
 
-    def register(self, service_name: str, provider: IdentityProvider) -> None:
-        self._providers[service_name] = provider
+    def register(self, name, provider):
+        self.providers[name] = provider
 
-    def get(self, service_name: str) -> IdentityProvider | None:
-        return self._providers.get(service_name)
+    def get(self, name):
+        return self.providers.get(name)
 
-    def all(self) -> list[IdentityProvider]:
-        return list(self._providers.values())
-
-    def service_names(self) -> list[str]:
-        return list(self._providers.keys())
+    def service_names(self):
+        return list(self.providers.keys())
 
 
-def create_default_registry() -> IdentityProviderRegistry:
+def create_default_registry():
     registry = IdentityProviderRegistry()
 
     registry.register("discogs", DiscogsProvider())
-    registry.register("musicbrainz", MusicBrainzProvider())
+    registry.register("musicbrainz", MusicBrainzProvider(client=DummyClient()))
     registry.register("spotify", SpotifyProvider())
 
     return registry

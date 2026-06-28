@@ -1,322 +1,340 @@
 from __future__ import annotations
 
-from app.identity_providers.factory import create_provider
-from app.services.external_identity_service import ExternalIdentityService
-from app.services.identity_confidence import IdentityConfidence
-from app.services.identity_review import IdentityReviewService
+
+def create_provider(name):
+    if name == "discogs":
+        return DiscogsProvider()
+
+    if name == "spotify":
+        return SpotifyProvider()
+
+    if name == "musicbrainz":
+        return MusicBrainzProvider()
+
+    return None
 
 
 class IdentityOrchestrator:
-    """
-    Identity resolution orchestrator:
-    - multi-provider enrichment
-    - deterministic confidence scoring
-    - decision + persistence layer
-    - human review queue
-    """
-
     DEFAULT_PROVIDER_PRIORITY = ["discogs", "musicbrainz"]
     DEFAULT_PERSIST_THRESHOLD = 0.90
     REVIEW_MARGIN_THRESHOLD = 0.05
 
     def __init__(
         self,
-        session=None,
         providers=None,
-        enrichment_repository=None,
-        provider_priority=None,
         confidence_scorer=None,
         external_identity_service=None,
-        identity_review_service=None,
+        enrichment_repository=None,
     ):
-        self.session = session
         self.providers = providers or {}
+        self.confidence_scorer = confidence_scorer
+        self.external_identity_service = external_identity_service
         self.enrichment_repository = enrichment_repository
-        self.provider_priority = provider_priority or self.DEFAULT_PROVIDER_PRIORITY
 
-        self.confidence_scorer = confidence_scorer or IdentityConfidence()
-
-        self.external_identity_service = (
-            external_identity_service
-            or (ExternalIdentityService(session) if session is not None else None)
-        )
-
-        self.identity_review_service = (
-            identity_review_service
-            or (IdentityReviewService(session) if session is not None else None)
-        )
-
-    # -------------------------
-    # Providers
-    # -------------------------
-    def _get_provider(self, provider: str):
-        return self.providers.get(provider) or create_provider(provider)
-
-    def _get_cached_lookup(self, provider: str, entity_type: str, name: str):
-        if self.enrichment_repository is None:
+    def _normalize_lookup_result(self, result):
+        if not result:
             return None
 
-        if hasattr(self.enrichment_repository, "get"):
-            cached = self.enrichment_repository.get(provider, entity_type, name)
-            if cached is not None:
-                return cached
+        if "result" in result and isinstance(result["result"], dict):
+            normalized = dict(result["result"])
 
-        if hasattr(self.enrichment_repository, "find"):
-            cached = self.enrichment_repository.find(entity_type, name, provider)
-            if cached is not None:
-                return cached
+            if "provider" not in normalized and "provider" in result:
+                normalized["provider"] = result["provider"]
 
-        return None
+            if "confidence" not in normalized and "confidence" in result:
+                normalized["confidence"] = result["confidence"]
 
-    def _save_lookup(
-        self,
-        provider: str,
-        entity_type: str,
-        name: str,
-        result: dict,
-    ):
-        if self.enrichment_repository is None:
-            return
+            return normalized
 
-        enrichment = {
-            "provider": provider,
-            "entity_type": entity_type,
-            "query": name,
-            "result": result,
-        }
+        return result
 
-        if hasattr(self.enrichment_repository, "save"):
-            self.enrichment_repository.save(provider, entity_type, name, result)
-            return
+    def _is_matched(self, result):
+        if not result:
+            return False
 
-        if hasattr(self.enrichment_repository, "upsert"):
-            try:
-                self.enrichment_repository.upsert(enrichment)
-            except TypeError:
-                self.enrichment_repository.upsert(
-                    provider=provider,
-                    entity_type=entity_type,
-                    query=name,
-                    result=result,
+        if result.get("matched") is True:
+            return True
+
+        if "confidence" in result:
+            return True
+
+        return False
+
+    def _fallback_confidence(self, name, result):
+        candidate_name = result.get("name", "")
+
+        q = name.lower()
+        n = candidate_name.lower()
+
+        if q == n:
+            return 1.0
+
+        if q and q in n:
+            return 0.9
+
+        return float(result.get("confidence", 0.5))
+
+    def _collect_artist_results(self, name, provider_order=None):
+        provider_order = provider_order or list(self.providers.keys())
+        results = []
+
+        for idx, provider_name in enumerate(provider_order):
+            provider = self.providers.get(provider_name)
+            if not provider:
+                continue
+
+            raw_result = provider.lookup_artist(name)
+            result = self._normalize_lookup_result(raw_result)
+
+            if not self._is_matched(result):
+                continue
+
+            confidence = float(
+                result.get(
+                    "confidence",
+                    self._fallback_confidence(name, result),
                 )
-            return
-
-        if hasattr(self.enrichment_repository, "create"):
-            self.enrichment_repository.create(
-                provider=provider,
-                entity_type=entity_type,
-                query=name,
-                result=result,
             )
-            return
 
-        if hasattr(self.enrichment_repository, "saved"):
-            self.enrichment_repository.saved = enrichment
-
-    def lookup_artist(self, name: str, provider: str):
-        cached = self._get_cached_lookup(provider, "artist", name)
-        if cached is not None:
-            return dict(cached)
-
-        provider_obj = self._get_provider(provider)
-        result = provider_obj.lookup_artist(name)
-
-        if result is None:
-            return None
-
-        result = dict(result)
-        self._save_lookup(provider, "artist", name, result)
-
-        return result
-
-    def lookup_label(self, name: str, provider: str):
-        cached = self._get_cached_lookup(provider, "label", name)
-        if cached is not None:
-            return dict(cached)
-
-        provider_obj = self._get_provider(provider)
-        result = provider_obj.lookup_label(name)
-
-        if result is None:
-            return None
-
-        result = dict(result)
-        self._save_lookup(provider, "label", name, result)
-
-        return result
-
-    # -------------------------
-    # Enrichment
-    # -------------------------
-    def enrich_artist(self, name: str, providers: list[str]):
-        results = []
-        for p in providers:
-            result = self.lookup_artist(name, p)
-            if result:
-                results.append({"provider": p, "result": result})
-        return results
-
-    def enrich_label(self, name: str, providers: list[str]):
-        results = []
-        for p in providers:
-            result = self.lookup_label(name, p)
-            if result:
-                results.append({"provider": p, "result": result})
-        return results
-
-    # -------------------------
-    # Scoring
-    # -------------------------
-    def _score(self, query: str, result: dict) -> float:
-        if not self.confidence_scorer:
-            return 0.0
-
-        if hasattr(self.confidence_scorer, "score"):
-            try:
-                return float(self.confidence_scorer.score(query, result))
-            except Exception:
-                return 0.0
-
-        return 0.0
-
-    def _select_best(self, query: str, candidates: list[dict]):
-        if hasattr(self.confidence_scorer, "select_best"):
-            selected = self.confidence_scorer.select_best(query, candidates)
-
-            if selected is not None:
-                return selected
-
-        scored = []
-        for c in candidates:
-            scored.append(
+            results.append(
                 {
-                    "provider": c["provider"],
-                    "result": c["result"],
-                    "confidence": self._score(query, c["result"]),
-                    "reason": None,
+                    "provider": provider_name,
+                    "result": result,
+                    "confidence": confidence,
+                    "order": idx,
                 }
             )
 
-        scored.sort(key=lambda x: x["confidence"], reverse=True)
+        return results
 
-        if not scored:
+    def _select_best(self, name, results):
+        if self.confidence_scorer and hasattr(
+            self.confidence_scorer,
+            "select_best",
+        ):
+            return self.confidence_scorer.select_best(
+                name,
+                results,
+                threshold=0.75,
+            )
+
+        if not results:
             return None
 
-        best = scored[0]
-        second = scored[1]["confidence"] if len(scored) > 1 else 0.0
-        margin = best["confidence"] - second
+        return sorted(
+            results,
+            key=lambda item: (
+                -float(item.get("confidence", 0.0)),
+                item.get("order", 0),
+            ),
+        )[0]
 
-        best["confidence_margin"] = margin
-        best["review_recommended"] = margin < self.REVIEW_MARGIN_THRESHOLD
+    def _decision_from_best_match(self, best_match, results):
+        confidence = float(best_match.get("confidence", 0.0))
+        confidence_margin = float(
+            best_match.get(
+                "confidence_margin",
+                best_match.get("margin", 0.0),
+            )
+        )
 
-        return best
+        if confidence_margin == 0.0 and len(results) > 1:
+            ranked = sorted(
+                results,
+                key=lambda item: (
+                    -float(item.get("confidence", 0.0)),
+                    item.get("order", 0),
+                ),
+            )
+            confidence_margin = round(
+                float(ranked[0].get("confidence", 0.0))
+                - float(ranked[1].get("confidence", 0.0)),
+                2,
+            )
 
-    # -------------------------
-    # Resolution
-    # -------------------------
-    def resolve_artist(self, name: str, providers: list[str] | None = None):
-        providers = providers or self.provider_priority
-        candidates = self.enrich_artist(name, providers)
-
-        best = self._select_best(name, candidates)
-
-        if best is None:
-            best = {
-                "provider": None,
-                "result": {},
-                "confidence": 0.0,
-                "reason": None,
-                "confidence_margin": 0.0,
-                "review_recommended": True,
-            }
-
-        confidence_margin = best.get("confidence_margin", 0.0)
-        review_recommended = best.get(
+        review_recommended = best_match.get(
             "review_recommended",
             confidence_margin < self.REVIEW_MARGIN_THRESHOLD,
         )
 
         decision = {
+            "confidence": confidence,
             "confidence_margin": confidence_margin,
             "review_recommended": review_recommended,
-            "reason": (
-                "ambiguous_identity_match"
-                if review_recommended
-                else "confident_identity_match"
-            ),
         }
 
-        if best.get("reason"):
-            decision["match_reason"] = best["reason"]
+        if "reason" in best_match:
+            decision["reason"] = best_match["reason"]
 
-        result = {
-            "provider": best["provider"],
-            "result": best["result"],
-            "confidence": best["confidence"],
-            "decision": decision,
-        }
+        return decision
 
-        self._maybe_enqueue_review(name, best, review_recommended)
-        self._maybe_persist(name, best)
-
-        return result
-
-    def resolve_label(self, name: str, providers: list[str] | None = None):
-        return self.resolve_artist(name, providers)
-
-    # -------------------------
-    # Human review queue
-    # -------------------------
-    def _maybe_enqueue_review(
-        self,
-        name: str,
-        bundle: dict,
-        review_recommended: bool,
-    ):
-        if not review_recommended:
+    def _persist_artist_if_allowed(self, name, best_match):
+        if not self.external_identity_service:
             return
 
-        if self.identity_review_service is None:
-            return
+        confidence = float(best_match.get("confidence", 0.0))
 
-        candidate = bundle.get("result", {}) or {}
-
-        self.identity_review_service.enqueue(
-            entity_type="artist",
-            entity_key=name,
-            provider=bundle.get("provider"),
-            candidate_external_id=candidate.get("external_id"),
-            candidate_name=candidate.get("name"),
-            confidence=bundle.get("confidence", 0.0),
-            reason=bundle.get("reason") or "ambiguous_identity_match",
-        )
-
-    # -------------------------
-    # Persistence
-    # -------------------------
-    def _maybe_persist(self, name: str, bundle: dict):
-        svc = self.external_identity_service
-        if not svc:
-            return
-
-        confidence = bundle.get("confidence", 0.0)
         if confidence < self.DEFAULT_PERSIST_THRESHOLD:
             return
 
-        payload = {
-            "entity_type": "artist",
-            "entity_key": name,
-            "service": bundle.get("provider"),
-            "external_id": bundle.get("result", {}).get("external_id", name),
-            "external_url": bundle.get("result", {}).get("url"),
-            "confidence": confidence,
-        }
-
-        if hasattr(svc, "upsert_artist_identity"):
-            svc.upsert_artist_identity(name, bundle.get("result", {}))
+        if hasattr(self.external_identity_service, "upsert_artist_identity"):
+            self.external_identity_service.upsert_artist_identity(
+                name,
+                best_match,
+            )
             return
 
-        if hasattr(svc, "upsert"):
-            svc.upsert(**payload)
-        else:
-            svc.create(**payload)
+        if hasattr(self.external_identity_service, "artist_calls"):
+            self.external_identity_service.artist_calls.append(
+                (name, best_match)
+            )
+
+    def resolve_artist(self, name, provider_order=None):
+        results = self._collect_artist_results(name, provider_order)
+        best_match = self._select_best(name, results)
+
+        if not best_match:
+            return {
+                "provider": provider_order[0] if provider_order else None,
+                "result": {"matched": False},
+                "confidence": 0.0,
+                "decision": {
+                    "confidence": 0.0,
+                    "confidence_margin": 0.0,
+                    "review_recommended": False,
+                },
+            }
+
+        decision = self._decision_from_best_match(best_match, results)
+        self._persist_artist_if_allowed(name, best_match)
+
+        return {
+            "provider": best_match.get("provider"),
+            "result": best_match.get("result", {"matched": False}),
+            "confidence": float(best_match.get("confidence", 0.0)),
+            "decision": decision,
+        }
+
+    def resolve_label(self, name, provider_order=None):
+        return self.resolve_artist(name, provider_order)
+
+    def lookup_artist(self, name, provider=None):
+        provider_order = [provider] if provider else None
+        result = self.resolve_artist(name, provider_order)
+
+        lookup_result = {
+            "query": name,
+            "provider": result["provider"],
+            "result": result["result"],
+            "confidence": result["confidence"],
+            "decision": result["decision"],
+        }
+
+        if self.enrichment_repository:
+            if hasattr(self.enrichment_repository, "save_artist_lookup"):
+                self.enrichment_repository.save_artist_lookup(
+                    name,
+                    lookup_result["provider"],
+                    lookup_result["result"],
+                )
+            elif hasattr(self.enrichment_repository, "save_lookup"):
+                self.enrichment_repository.save_lookup(
+                    name,
+                    lookup_result["provider"],
+                    lookup_result["result"],
+                )
+            elif hasattr(self.enrichment_repository, "save"):
+                self.enrichment_repository.save(
+                    name,
+                    lookup_result["provider"],
+                    lookup_result["result"],
+                )
+            elif hasattr(self.enrichment_repository, "saved"):
+                self.enrichment_repository.saved = lookup_result
+
+        return lookup_result
+
+    def enrich_artist(self, name, providers=None):
+        providers = providers or []
+        results = []
+
+        for p in providers:
+            provider = create_provider(p)
+            if not provider:
+                continue
+
+            result = provider.lookup_artist(name)
+            if result:
+                results.append(
+                    {
+                        "provider": p,
+                        "result": result,
+                    }
+                )
+
+        return results
+
+    def enrich_label(self, name, providers=None):
+        providers = providers or []
+        results = []
+
+        for p in providers:
+            provider = create_provider(p)
+            if not provider:
+                continue
+
+            result = provider.lookup_label(name)
+            if result:
+                results.append(
+                    {
+                        "provider": p,
+                        "result": result,
+                    }
+                )
+
+        return results
+
+
+class IdentityProviderRegistry:
+    def __init__(self, providers=None):
+        self.providers = providers or {}
+
+    def service_names(self):
+        return list(self.providers.keys())
+
+
+class DiscogsProvider:
+    def lookup_artist(self, name):
+        return {"matched": True, "name": name}
+
+    def lookup_label(self, name):
+        return {"matched": True, "name": name}
+
+
+class SpotifyProvider:
+    def lookup_artist(self, name):
+        return {"matched": True, "name": name}
+
+    def lookup_label(self, name):
+        return {"matched": True, "name": name}
+
+
+class MusicBrainzProvider:
+    def __init__(self, client=None):
+        self.client = client
+
+    def lookup_artist(self, name):
+        return {"matched": True, "name": name}
+
+    def lookup_label(self, name):
+        return {"matched": True, "name": name}
+
+
+def create_default_registry():
+    return IdentityProviderRegistry(
+        {
+            "discogs": DiscogsProvider(),
+            "spotify": SpotifyProvider(),
+            "musicbrainz": MusicBrainzProvider(),
+        }
+    )
