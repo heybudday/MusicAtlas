@@ -5,34 +5,35 @@ from app.ui.command import Command
 
 class CommandRegistry:
     """
-    Registry for UI commands.
+    Stores and resolves user-facing commands.
     """
 
     def __init__(self):
         self._commands: dict[str, Command] = {}
+        self._aliases: dict[str, str] = {}
 
     def register(self, *args) -> None:
         if len(args) == 1:
             command = args[0]
-            self._commands[command.name] = command
-            return
+            name = command.name
+        elif len(args) == 2:
+            name, command = args
+        else:
+            raise TypeError("register() expects (command) or (name, command)")
 
-        if len(args) == 2:
-            command_name, command = args
-            self._commands[command_name] = command
-            return
+        self._commands[name] = command
 
-        raise TypeError("register() expects a Command or (name, Command)")
+        for alias in getattr(command, "aliases", []):
+            self._aliases[alias] = name
 
     def get(self, command_name: str) -> Command | None:
-        return self._commands.get(command_name)
+        resolved_name = self._aliases.get(command_name, command_name)
 
-    def has_command(self, command_name: str) -> bool:
-        return command_name in self._commands
-
-    def list_commands(self) -> list[Command]:
-        return list(self._commands.values())
+        return self._commands.get(resolved_name)
 
     @property
     def commands(self) -> list[Command]:
-        return self.list_commands()
+        return list(self._commands.values())
+
+    def list_commands(self) -> list[Command]:
+        return self.commands
