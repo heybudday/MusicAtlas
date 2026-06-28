@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
+
+from app.ui.command_registry import CommandRegistry
 
 
 class CommandDispatcher:
-    def __init__(self) -> None:
-        self._commands: dict[str, Callable[..., Any]] = {}
+    """
+    Routes command names to registered Command objects.
+    """
 
-    def register(self, name: str, handler: Callable[..., Any]) -> None:
-        self._commands[name] = handler
+    def __init__(self, registry: CommandRegistry):
+        self._registry = registry
 
-    def dispatch(self, name: str, *args: Any, **kwargs: Any) -> Any:
-        if name not in self._commands:
-            raise KeyError(f"Unknown command: {name}")
+    def dispatch(self, command_name: str, *args, **kwargs) -> Any:
+        command = self._registry.get(command_name)
+        return command.execute(*args, **kwargs)
 
-        return self._commands[name](*args, **kwargs)
+    def has_command(self, command_name: str) -> bool:
+        return self._registry.has(command_name)

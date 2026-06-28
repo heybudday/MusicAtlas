@@ -2,7 +2,14 @@ from app.ui.command import Command
 
 
 class HelloCommand(Command):
-    def execute(self):
+    def __init__(self):
+        super().__init__(
+            name="hello",
+            description="Display a greeting",
+            execute=self._execute,
+        )
+
+    def _execute(self):
         return "hello"
 
 

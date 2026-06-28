@@ -1,20 +1,28 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Callable
 
 
-class Command(ABC):
+class Command:
     """
-    Base class for UI commands.
+    Represents a user-facing command.
 
-    Commands provide a small, consistent interface for actions that can be
-    triggered by desktop, mobile, CLI, or other front ends.
+    Commands include both executable behavior and metadata that can be
+    used by menus, command palettes, shortcuts, toolbars, and help screens.
     """
 
-    @abstractmethod
-    def execute(self) -> Any:
-        """
-        Execute the command.
-        """
-        raise NotImplementedError
+    def __init__(
+        self,
+        *,
+        name: str,
+        description: str,
+        execute: Callable[..., Any],
+        shortcut: str | None = None,
+    ):
+        self.name = name
+        self.description = description
+        self._execute = execute
+        self.shortcut = shortcut
+
+    def execute(self, *args, **kwargs) -> Any:
+        return self._execute(*args, **kwargs)

@@ -5,6 +5,7 @@ from app.services.report_delete_service import ReportDeleteService
 from app.services.report_export_service import ReportExportService
 from app.services.report_history_service import ReportHistoryService
 from app.services.report_search_service import ReportSearchService
+from app.ui.command_registry import CommandRegistry
 
 
 class ServiceRegistry:
@@ -23,12 +24,14 @@ class ServiceRegistry:
         search_service: ReportSearchService | None = None,
         export_service: ReportExportService | None = None,
         delete_service: ReportDeleteService | None = None,
+        command_registry: CommandRegistry | None = None,
     ):
         self.archive_service = archive_service
         self.history_service = history_service
         self.search_service = search_service
         self.export_service = export_service
         self.delete_service = delete_service
+        self.command_registry = command_registry or CommandRegistry()
 
     def get(self, name: str):
         """
@@ -49,6 +52,9 @@ class ServiceRegistry:
         services = []
 
         for name, value in vars(self).items():
+            if name == "command_registry":
+                continue
+
             if value is not None:
                 services.append(name)
 
