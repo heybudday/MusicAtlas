@@ -1,10 +1,9 @@
 from app.application import Application
-from app.desktop.desktop_shell import DesktopShell
 
 
-def test_shell_reports_unknown_command():
+def test_unknown_command_returns_message():
     app = Application.create()
 
-    shell = DesktopShell(app)
+    result = app.shell.run_once("doesnotexist")
 
-    assert shell.process_input("unknown") == "Unknown command: unknown"
+    assert result == "Unknown command: doesnotexist"

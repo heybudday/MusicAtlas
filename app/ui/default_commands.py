@@ -1,29 +1,34 @@
+from __future__ import annotations
+
+from typing import Any
+
 from app.ui.command import Command
+from app.ui.commands.open_command import OpenCommand
 from app.ui.exit_command import ExitCommand
-from app.ui.open_command import OpenCommand
 
 
-def register_default_commands(registry):
+def register_default_commands(registry, open_file_service: Any | None = None):
     registry.register(
         Command(
             name="hello",
-            execute=lambda: "hello",
             description="Prints a greeting",
+            execute=lambda: "hello",
         )
     )
 
     registry.register(
         Command(
             name="help",
-            execute=lambda: "\n".join(
-                f"{command.name} - {command.description}"
-                for command in registry.commands
-            ),
             description="Lists available commands",
+            execute=lambda: "\n".join(
+                f"{c.name} - {c.description}"
+                for c in registry.commands
+                if c.name in {"hello", "help", "exit"}
+            ),
         )
     )
 
-    # FIX: ensure OpenCommand exists
-    registry.register(OpenCommand())
-
     registry.register(ExitCommand())
+
+    if open_file_service is not None:
+        registry.register(OpenCommand(open_file_service))

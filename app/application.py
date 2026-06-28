@@ -1,41 +1,31 @@
-from __future__ import annotations
-
 from app.services.service_registry import ServiceRegistry
+from app.ui.command_registry import CommandRegistry
 from app.ui.default_commands import register_default_commands
-from app.desktop.desktop_shell import DesktopShell
 from app.ui.command_dispatcher import CommandDispatcher
+from app.desktop.desktop_shell import DesktopShell
+
+
+class OpenFileService:
+    def open(self, filename: str) -> None:
+        return None
 
 
 class Application:
-    """
-    Application bootstrap.
+    def __init__(self):
+        self.services = ServiceRegistry()
 
-    Owns all core services and exposes UI entry points.
-    """
+        self.services.command_registry = CommandRegistry()
+        self.services.open_file_service = OpenFileService()
 
-    def __init__(self, services, dispatcher, shell):
-        self.services = services
-        self.dispatcher = dispatcher
-        self.shell = shell
-
-    @classmethod
-    def create(cls) -> "Application":
-        services = ServiceRegistry()
-
-        # register default commands
-        register_default_commands(services.command_registry)
-
-        # FIX: dispatcher needs registry
-        dispatcher = CommandDispatcher(services.command_registry)
-
-        shell = DesktopShell(app=None)
-
-        app = cls(
-            services=services,
-            dispatcher=dispatcher,
-            shell=shell
+        register_default_commands(
+            self.services.command_registry,
+            self.services.open_file_service,
         )
 
-        shell.set_app(app)
+        self.dispatcher = CommandDispatcher(self.services.command_registry)
 
-        return app
+        self.shell = DesktopShell(self)
+
+    @classmethod
+    def create(cls):
+        return cls()
