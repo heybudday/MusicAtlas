@@ -1,11 +1,9 @@
 from app.application import Application
-from app.ui.command import Command
 
 
-def test_application_registers_default_commands_on_create():
+def test_application_registers_default_commands():
     app = Application.create()
 
-    command = app.services.command_registry.get("hello")
+    commands = app.services.command_registry.commands
 
-    assert isinstance(command, Command)
-    assert command.execute() == "hello"
+    assert [command.name for command in commands] == ["hello", "help"]
