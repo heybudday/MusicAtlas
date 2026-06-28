@@ -15,12 +15,14 @@ class Command:
         description: str = "",
         shortcut: str | None = None,
         aliases: list[str] | None = None,
+        usage: str = "",
     ):
         self.name = name
         self._execute = execute
         self.description = description
         self.shortcut = shortcut
         self.aliases = aliases or []
+        self.usage = usage
 
     def execute(self, *args, **kwargs) -> Any:
         return self._execute(*args, **kwargs)
