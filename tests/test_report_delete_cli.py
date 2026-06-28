@@ -1,37 +1,69 @@
-from app.cli.report_delete import ReportDeleteCLI
+from app.cli.report_delete import main
 
 
 class FakeDeleteService:
-    def __init__(self, deleted=True):
+    def __init__(self, deleted):
         self.deleted = deleted
-        self.requested = None
+        self.called_with = None
 
     def delete_report(self, filename):
-        self.requested = filename
+        self.called_with = filename
         return self.deleted
 
 
-def test_delete_success(capsys):
-    service = FakeDeleteService(True)
-    cli = ReportDeleteCLI(service)
+class FakeHistoryService:
+    pass
 
-    result = cli.run("identity-report.json")
+
+class FakeLoader:
+    pass
+
+
+def test_delete_success(monkeypatch, capsys):
+    service = FakeDeleteService(True)
+
+    monkeypatch.setattr(
+        "app.cli.report_delete.ReportArchiveLoader",
+        lambda: FakeLoader(),
+    )
+    monkeypatch.setattr(
+        "app.cli.report_delete.ReportHistoryService",
+        lambda loader: FakeHistoryService(),
+    )
+    monkeypatch.setattr(
+        "app.cli.report_delete.ReportDeleteService",
+        lambda history: service,
+    )
+
+    result = main(["example.json"])
 
     captured = capsys.readouterr()
 
     assert result == 0
-    assert service.requested == "identity-report.json"
-    assert "Deleted report: identity-report.json" in captured.out
+    assert service.called_with == "example.json"
+    assert "Deleted report: example.json" in captured.out
 
 
-def test_delete_missing_report(capsys):
+def test_delete_missing(monkeypatch, capsys):
     service = FakeDeleteService(False)
-    cli = ReportDeleteCLI(service)
 
-    result = cli.run("missing.json")
+    monkeypatch.setattr(
+        "app.cli.report_delete.ReportArchiveLoader",
+        lambda: FakeLoader(),
+    )
+    monkeypatch.setattr(
+        "app.cli.report_delete.ReportHistoryService",
+        lambda loader: FakeHistoryService(),
+    )
+    monkeypatch.setattr(
+        "app.cli.report_delete.ReportDeleteService",
+        lambda history: service,
+    )
+
+    result = main(["missing.json"])
 
     captured = capsys.readouterr()
 
     assert result == 1
-    assert service.requested == "missing.json"
+    assert service.called_with == "missing.json"
     assert "Report not found: missing.json" in captured.out
