@@ -2,23 +2,32 @@ from __future__ import annotations
 
 from app.application import Application
 from app.services.service_registry import ServiceRegistry
+from app.ui.command_dispatcher import CommandDispatcher
 
 
 class DesktopShell:
     """
-    Initial desktop shell abstraction.
+    Desktop application shell.
 
-    This gives future desktop UI code a stable place to access the
-    application, services, and command dispatcher.
+    Owns desktop-facing behavior while delegating shared application
+    services to the Application instance.
     """
 
     def __init__(self, application: Application):
         self.application = application
-        self.services = application.services
-        self.dispatcher = application.dispatcher
+        self.services: ServiceRegistry = application.services
+        self.dispatcher: CommandDispatcher = application.dispatcher
 
     def run(self) -> bool:
         return True
 
-    def run_command(self, command_name: str, *args, **kwargs):
-        return self.dispatcher.dispatch(command_name, *args, **kwargs)
+    def execute_command(self, command_name: str):
+        command = self.services.command_registry.get(command_name)
+
+        if command is None:
+            return None
+
+        return command.execute()
+
+    def process_input(self, user_input: str):
+        return self.execute_command(user_input)
