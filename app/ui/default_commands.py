@@ -24,9 +24,23 @@ class HelpCommand(Command):
         self.registry = registry
 
     def execute_help(self, *args):
+        requested_category = args[0].strip().lower() if args else None
+
+        commands = self.registry.commands
+
+        if requested_category:
+            commands = [
+                command
+                for command in commands
+                if (command.category or "General").lower() == requested_category
+            ]
+
+            if not commands:
+                return f"No commands found in category '{requested_category}'."
+
         sections = {}
 
-        for command in self.registry.commands:
+        for command in commands:
             category = command.category or "General"
             sections.setdefault(category, []).append(command)
 
@@ -36,7 +50,7 @@ class HelpCommand(Command):
             lines.append(category)
             lines.append("-" * len(category))
 
-            for command in sections[category]:
+            for command in sorted(sections[category], key=lambda item: item.name):
                 description = command.description or ""
                 usage = command.usage or command.name
 

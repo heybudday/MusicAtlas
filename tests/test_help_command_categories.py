@@ -24,3 +24,24 @@ def test_help_groups_commands_by_category():
         "exit - Exit the application\n"
         "Usage: exit"
     )
+
+
+def test_help_filters_commands_by_category():
+    app = Application.create()
+
+    result = app.shell.run_once("help file")
+
+    assert result == (
+        "File\n"
+        "----\n"
+        "open - Opens a file\n"
+        "Usage: open <filename>"
+    )
+
+
+def test_help_unknown_category_returns_message():
+    app = Application.create()
+
+    result = app.shell.run_once("help network")
+
+    assert result == "No commands found in category 'network'."
