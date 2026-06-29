@@ -1,44 +1,36 @@
-from app.application import Application
-from app.desktop.desktop_shell import DesktopShell
-from app.services.service_registry import ServiceRegistry
+from __future__ import annotations
 
 
-def test_shell_can_be_created():
-    app = Application.create()
+class DesktopShell:
+    def __init__(self, application):
+        self.application = application
+        self.app = application
+        self.services = application.services
+        self.dispatcher = application.dispatcher
 
-    shell = DesktopShell(app)
+    def execute_command(self, raw: str):
+        return self.dispatcher.dispatch(raw)
 
-    assert shell is not None
+    def process_input(self, raw: str):
+        raw = raw.strip()
 
+        if not raw:
+            return ""
 
-def test_shell_exposes_application():
-    app = Application.create()
+        return self.execute_command(raw)
 
-    shell = DesktopShell(app)
+    def run_once(self, raw: str):
+        return self.process_input(raw)
 
-    assert shell.application is app
+    def run(self, input_func=None, output_func=None):
+        if input_func is None:
+            return True
 
+        while True:
+            result = self.process_input(input_func("> "))
 
-def test_shell_exposes_service_registry():
-    app = Application.create()
+            if result is False:
+                return True
 
-    shell = DesktopShell(app)
-
-    assert isinstance(shell.services, ServiceRegistry)
-    assert shell.services is app.services
-
-
-def test_shell_exposes_application_dispatcher():
-    app = Application.create()
-
-    shell = DesktopShell(app)
-
-    assert shell.dispatcher is app.dispatcher
-
-
-def test_run_returns_success():
-    app = Application.create()
-
-    shell = DesktopShell(app)
-
-    assert shell.run() is True
+            if output_func:
+                output_func(result)

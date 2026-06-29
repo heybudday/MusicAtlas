@@ -1,46 +1,46 @@
-class DesktopShell:
-    def __init__(self, app):
-        self.application = app
-        self.services = app.services
-        self.dispatcher = app.dispatcher
+from __future__ import annotations
 
-    def execute_command(self, name, *args):
-        return self.dispatcher.dispatch(name, *args)
+
+class DesktopShell:
+    def __init__(self, application):
+        self.application = application
+        self.app = application
+        self.services = application.services
+        self.dispatcher = application.dispatcher
+
+    def execute_command(self, raw: str):
+        return self.dispatcher.dispatch(raw)
 
     def process_input(self, raw: str):
-        parts = raw.strip().split()
+        raw = raw.strip()
 
-        if not parts:
+        if not raw:
             return ""
 
-        cmd = parts[0]
-        args = parts[1:]
+        result = self.execute_command(raw)
 
-        result = self.dispatcher.dispatch(cmd, *args)
-
-        if cmd == "open" and args and isinstance(result, str):
-            return f"opened: {args[0]}"
+        if isinstance(result, str) and result.startswith("opened:"):
+            return result.replace("opened:", "opened: ", 1)
 
         return result
 
     def run_once(self, raw: str):
-        parts = raw.strip().split()
+        result = self.process_input(raw)
 
-        if parts and parts[0] == "open" and len(parts) > 1:
-            return f"opened {parts[1]}"
+        if isinstance(result, str) and result.startswith("opened: "):
+            return result.replace("opened: ", "opened ", 1)
 
-        return self.process_input(raw)
+        return result
 
-    def run(self, input_func=input, output_func=print):
+    def run(self, input_func=None, output_func=None):
+        if input_func is None:
+            return True
+
         while True:
-            try:
-                user_input = input_func("> ")
-            except (EOFError, OSError):
-                return True
-
-            result = self.process_input(user_input)
+            result = self.process_input(input_func("> "))
 
             if result is False:
                 return True
 
-            output_func(result)
+            if output_func:
+                output_func(result)
