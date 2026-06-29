@@ -1,4 +1,5 @@
 from app.services.service_registry import ServiceRegistry
+from app.ui.command_history import CommandHistory
 from app.ui.command_registry import CommandRegistry
 from app.ui.default_commands import register_default_commands
 from app.ui.command_dispatcher import CommandDispatcher
@@ -16,13 +17,17 @@ class Application:
 
         self.services.command_registry = CommandRegistry()
         self.services.open_file_service = OpenFileService()
+        self.services.command_history = CommandHistory()
 
         register_default_commands(
             self.services.command_registry,
             self.services.open_file_service,
         )
 
-        self.dispatcher = CommandDispatcher(self.services.command_registry)
+        self.dispatcher = CommandDispatcher(
+            self.services.command_registry,
+            self.services.command_history,
+        )
 
         self.shell = DesktopShell(self)
 

@@ -4,8 +4,9 @@ from app.ui.errors import CommandError
 
 
 class CommandDispatcher:
-    def __init__(self, registry):
+    def __init__(self, registry, history=None):
         self.registry = registry
+        self.history = history
 
     def dispatch(self, command_line: str):
         parts = command_line.strip().split()
@@ -27,7 +28,12 @@ class CommandDispatcher:
             if not validation_result.valid:
                 return validation_result.message
 
-            return command.execute(*args)
+            result = command.execute(*args)
+
+            if self.history is not None:
+                self.history.add(command_line)
+
+            return result
 
         except CommandError as ex:
             return str(ex)
