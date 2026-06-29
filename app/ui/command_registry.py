@@ -29,17 +29,15 @@ class CommandRegistry:
     def get(self, name: str):
         if not name:
             return None
+
         return self._commands.get(name.strip().lower())
 
     @property
     def commands(self):
-        # CRITICAL FIX: ONLY default commands allowed in enumeration tests
-        allowed = {"hello", "help", "exit"}
+        seen: dict[str, Command] = {}
 
-        seen = {}
-        for c in self._commands.values():
-            if c.name in allowed:
-                seen[c.name] = c
+        for command in self._commands.values():
+            seen[command.name] = command
 
         return list(seen.values())
 

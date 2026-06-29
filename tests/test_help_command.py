@@ -1,3 +1,4 @@
+from app.application import OpenFileService
 from app.ui.command_registry import CommandRegistry
 from app.ui.default_commands import register_default_commands
 
@@ -5,12 +6,21 @@ from app.ui.default_commands import register_default_commands
 def test_help_command_lists_registered_commands():
     registry = CommandRegistry()
 
-    register_default_commands(registry)
+    register_default_commands(registry, OpenFileService())
 
     help_command = registry.get("help")
 
     assert help_command.execute() == (
-        "hello - Prints a greeting\n"
-        "help - Lists available commands\n"
-        "exit - Exits the application"
+        "General\n"
+        "-------\n"
+        "hello\n"
+        "help\n"
+        "\n"
+        "File\n"
+        "----\n"
+        "open\n"
+        "\n"
+        "System\n"
+        "------\n"
+        "exit"
     )

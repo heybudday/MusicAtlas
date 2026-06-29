@@ -9,6 +9,7 @@ class ExitCommand(Command):
             name="exit",
             description="Exits the application",
             execute=self._execute,
+            category="System",
         )
 
     def _execute(self):

@@ -23,7 +23,6 @@ class Command:
     name: str
     execute: Callable[..., Any]
 
-    # FIX: must be optional (tests omit it in multiple cases)
     description: str | None = None
 
     args: list[ArgSpec] = field(default_factory=list)
@@ -32,6 +31,7 @@ class Command:
     aliases: list[str] = field(default_factory=list)
     shortcut: str | None = None
     usage: str | None = None
+    category: str = "General"
 
     def __call__(self, *args, **kwargs):
         return self.execute(*args, **kwargs)

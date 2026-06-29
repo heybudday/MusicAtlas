@@ -6,4 +6,9 @@ def test_application_registers_default_commands():
 
     commands = app.services.command_registry.commands
 
-    assert [command.name for command in commands] == ["hello", "help", "exit"]
+    assert [command.name for command in commands] == [
+        "hello",
+        "help",
+        "open",
+        "exit",
+    ]
