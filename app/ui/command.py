@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from app.ui.validation import ValidationResult
+
 
 @dataclass(frozen=True)
 class ArgSpec:
@@ -32,6 +34,12 @@ class Command:
     shortcut: str | None = None
     usage: str | None = None
     validator: Any = None
+
+    def validate(self, *args) -> ValidationResult:
+        if self.validator is None:
+            return ValidationResult(True)
+
+        return self.validator.validate(args)
 
     def __call__(self, *args, **kwargs):
         return self.execute(*args, **kwargs)

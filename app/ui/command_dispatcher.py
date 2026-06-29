@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import shlex
+from app.ui.errors import CommandError
 
 
 class CommandDispatcher:
@@ -8,7 +8,7 @@ class CommandDispatcher:
         self.registry = registry
 
     def dispatch(self, command_line: str):
-        parts = shlex.split(command_line)
+        parts = command_line.strip().split()
 
         if not parts:
             return None
@@ -21,10 +21,16 @@ class CommandDispatcher:
         if command is None:
             return f"Unknown command: {command_name}"
 
-        if command.validator:
-            result = command.validator.validate(args)
+        try:
+            validation_result = command.validate(*args)
 
-            if not result.valid:
-                return result.message
+            if not validation_result.valid:
+                return validation_result.message
 
-        return command(*args)
+            return command.execute(*args)
+
+        except CommandError as ex:
+            return str(ex)
+
+        except Exception:
+            return "An unexpected error occurred."
