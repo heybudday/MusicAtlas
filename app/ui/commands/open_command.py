@@ -18,6 +18,7 @@ class OpenCommand(Command):
             description="Opens a file",
             execute=self.execute,
             category="File",
+            usage="open <filename>",
         )
 
     def execute(self, filename: str) -> str:

@@ -7,16 +7,20 @@ def test_help_groups_commands_by_category():
     result = app.shell.run_once("help")
 
     assert result == (
-        "General\n"
-        "-------\n"
-        "hello\n"
-        "help\n"
-        "\n"
         "File\n"
         "----\n"
-        "open\n"
+        "open - Opens a file\n"
+        "Usage: open <filename>\n"
+        "\n"
+        "General\n"
+        "-------\n"
+        "hello - Say hello\n"
+        "Usage: hello\n"
+        "help - Show available commands\n"
+        "Usage: help\n"
         "\n"
         "System\n"
         "------\n"
-        "exit"
+        "exit - Exit the application\n"
+        "Usage: exit"
     )
